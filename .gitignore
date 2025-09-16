@@ -1,0 +1,13 @@
+﻿################################################################################
+# Este archivo .gitignore ha sido creado automáticamente por Microsoft(R) Visual Studio.
+################################################################################
+
+/src/Optica.Api/bin/Debug/net8.0
+/src/Optica.Api/obj
+/src/Optica.Application/bin/Debug/net8.0
+/src/Optica.Application/obj
+/src/Optica.Domain/bin/Debug/net8.0
+/src/Optica.Domain/obj
+/src/Optica.Infrastructure/bin/Debug/net8.0
+/src/Optica.Infrastructure/obj
+/.vs

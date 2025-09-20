@@ -1,0 +1,42 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.34916.146
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Optica.Api", "src\Optica.Api\Optica.Api.csproj", "{39CF9866-DF72-4A8C-8B60-18DAEA9995B8}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Optica.Application", "src\Optica.Application\Optica.Application.csproj", "{A6E4562A-E5C9-4DA0-9ACD-CC13698E75B2}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Optica.Domain", "src\Optica.Domain\Optica.Domain.csproj", "{FCAD7952-68BA-45C1-99F6-80280ECC6920}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Optica.Infrastructure", "src\Optica.Infrastructure\Optica.Infrastructure.csproj", "{51611F52-B0B9-47F8-9B98-91A32902A8A3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{39CF9866-DF72-4A8C-8B60-18DAEA9995B8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{39CF9866-DF72-4A8C-8B60-18DAEA9995B8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{39CF9866-DF72-4A8C-8B60-18DAEA9995B8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{39CF9866-DF72-4A8C-8B60-18DAEA9995B8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A6E4562A-E5C9-4DA0-9ACD-CC13698E75B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6E4562A-E5C9-4DA0-9ACD-CC13698E75B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6E4562A-E5C9-4DA0-9ACD-CC13698E75B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6E4562A-E5C9-4DA0-9ACD-CC13698E75B2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCAD7952-68BA-45C1-99F6-80280ECC6920}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCAD7952-68BA-45C1-99F6-80280ECC6920}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCAD7952-68BA-45C1-99F6-80280ECC6920}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCAD7952-68BA-45C1-99F6-80280ECC6920}.Release|Any CPU.Build.0 = Release|Any CPU
+		{51611F52-B0B9-47F8-9B98-91A32902A8A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{51611F52-B0B9-47F8-9B98-91A32902A8A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{51611F52-B0B9-47F8-9B98-91A32902A8A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{51611F52-B0B9-47F8-9B98-91A32902A8A3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DBD0A28C-CA8D-45F9-BC94-ADB14EE942DC}
+	EndGlobalSection
+EndGlobal

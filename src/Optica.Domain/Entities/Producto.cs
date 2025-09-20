@@ -1,0 +1,1 @@
+using Optica.Domain.Enums; namespace Optica.Domain.Entities; public sealed class Producto{ public Guid Id{get;set;} public string Sku{get;set;}=null!; public string Nombre{get;set;}=null!; public CategoriaProducto Categoria{get;set;} public bool Activo{get;set;}=true; public ICollection<Inventario> Inventarios{get;set;}=new List<Inventario>(); }

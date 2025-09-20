@@ -1,0 +1,1 @@
+namespace Optica.Domain.Enums; public enum CategoriaProducto:byte{ Armazon=0, Accesorio=1, Cristal=2, LenteContacto=3, Servicio=4, Otro=9 }

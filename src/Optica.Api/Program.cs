@@ -53,7 +53,7 @@ builder.Services.AddCors(opts =>
     // Producción: Angular en Azure Static Web Apps / dominio propio
     opts.AddPolicy(CorsProd, b => b
         .WithOrigins(
-            "https://proud-forest-0d983ab1e.1.azurestaticapps.net/",
+            "https://opticaapi20250919155555.azurewebsites.net",
             "https://<tu-dominio>" // opcional, si tienes dominio
         )
         .AllowAnyHeader()

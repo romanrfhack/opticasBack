@@ -50,7 +50,7 @@ builder.Services.AddCors(opts =>
     // .AllowCredentials()
     );
 
-    // Producción: Angular en Azure Static Web Apps / dominio propio
+    // Producción: Angular en Azure Static Web Apps
     opts.AddPolicy(CorsProd, b => b
         .WithOrigins(
             "https://opticaapi20250919155555.azurewebsites.net",

@@ -23,8 +23,9 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
     public DbSet<PrescripcionMaterial> PrescripcionesMaterial => Set<PrescripcionMaterial>();
     public DbSet<PrescripcionLenteContacto> PrescripcionesLenteContacto => Set<PrescripcionLenteContacto>();
     public DbSet<HistoriaPago> HistoriaPagos => Set<HistoriaPago>();
-    
     public DbSet<HistoriaClinicaVisita> Visitas => Set<HistoriaClinicaVisita>();
+    public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
+
 
 
     protected override void OnModelCreating(ModelBuilder b)

@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -7,15 +6,10 @@ using Optica.Api.Auth;
 using Optica.Domain.Entities;
 using Optica.Infrastructure.Identity;
 using Optica.Infrastructure.Persistence;
+using System.Security.Claims;
+using Optica.Domain.Dtos;
 
 namespace Optica.Api.Controllers;
-
-public sealed record LoginRequest(string Email, string Password);
-public sealed record TokenResponse(string AccessToken, string RefreshToken, long ExpiresInSeconds, object User);
-public sealed record RefreshRequest(string RefreshToken);
-public sealed record UpdateProfileRequest(string FullName, string? PhoneNumber);
-public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
-public sealed record SwitchBranchRequest(Guid TargetSucursalId);
 
 [ApiController]
 [Route("api/[controller]")]

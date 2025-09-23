@@ -248,43 +248,43 @@ public class HistoriasController : ControllerBase
 
     public sealed record EnviarLabRequest(decimal total, PagoDto[]? pagos, DateTime? fechaEstimadaEntrega);
 
-    [HttpPost("{id:guid}/enviar-lab")]
-    public async Task<IActionResult> EnviarALaboratorio(Guid id, EnviarLabRequest req)
-    {
-        var v = await _db.Visitas.Include(h => h.Pagos).FirstOrDefaultAsync(h => h.Id == id);
-        if (v is null) return NotFound();
+    //[HttpPost("{id:guid}/enviar-lab")]
+    //public async Task<IActionResult> EnviarALaboratorio(Guid id, EnviarLabRequest req)
+    //{
+    //    var v = await _db.Visitas.Include(h => h.Pagos).FirstOrDefaultAsync(h => h.Id == id);
+    //    if (v is null) return NotFound();
 
-        v.Estado = EstadoHistoria.EnLaboratorio;
-        v.Total = req.total;
-        v.FechaEnvioLaboratorio = DateTime.UtcNow;
-        v.FechaEstimadaEntrega = req.fechaEstimadaEntrega;
+    //    v.Estado = EstadoHistoria.EnLaboratorio;
+    //    v.Total = req.total;
+    //    v.FechaEnvioLaboratorio = DateTime.UtcNow;
+    //    v.FechaEstimadaEntrega = req.fechaEstimadaEntrega;
 
-        if (req.pagos is { Length: > 0 })
-        {
-            foreach (var p in req.pagos)
-            {
-                if (!Enum.TryParse<MetodoPago>(p.Metodo, true, out var metodo)) continue;
+    //    if (req.pagos is { Length: > 0 })
+    //    {
+    //        foreach (var p in req.pagos)
+    //        {
+    //            if (!Enum.TryParse<MetodoPago>(p.Metodo, true, out var metodo)) continue;
 
-                v.Pagos.Add(new HistoriaPago
-                {
-                    Id = Guid.NewGuid(),
-                    VisitaId = v.Id,
-                    Metodo = metodo,
-                    Monto = p.Monto,
-                    Autorizacion = p.Autorizacion,
-                    Nota = p.Nota
-                });
-            }
-        }
+    //            v.Pagos.Add(new HistoriaPago
+    //            {
+    //                Id = Guid.NewGuid(),
+    //                VisitaId = v.Id,
+    //                Metodo = metodo,
+    //                Monto = p.Monto,
+    //                Autorizacion = p.Autorizacion,
+    //                Nota = p.Nota
+    //            });
+    //        }
+    //    }
 
-        var sum = v.Pagos.Sum(x => x.Monto);
-        v.ACuenta = sum;
-        v.Resta = (v.Total ?? 0) - sum;
+    //    var sum = v.Pagos.Sum(x => x.Monto);
+    //    v.ACuenta = sum;
+    //    v.Resta = (v.Total ?? 0) - sum;
 
-        await _db.SaveChangesAsync();
-        // TODO: movimientos de inventario aquí
-        return NoContent();
-    }
+    //    await _db.SaveChangesAsync();
+    //    // TODO: movimientos de inventario aquí
+    //    return NoContent();
+    //}
 
     [HttpGet("{id:guid}/pagos")]
     public async Task<IEnumerable<object>> ListarPagos(Guid id)

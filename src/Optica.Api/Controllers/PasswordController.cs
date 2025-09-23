@@ -41,7 +41,7 @@ namespace Optica.Api.Controllers
         // POST /api/password/reset
         [HttpPost("reset")]
         [AllowAnonymous]
-        public async Task<IActionResult> Reset([FromBody] ResetPasswordRequest req)
+        public async Task<IActionResult> Reset([FromBody] CustomResetPasswordRequest req)
         {
             var user = await _users.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
             if (user is null) return BadRequest(new { message = "Usuario no encontrado." });

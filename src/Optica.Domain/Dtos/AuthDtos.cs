@@ -19,7 +19,7 @@ namespace Optica.Domain.Dtos
         public string Email { get; set; } = default!;
     }
 
-    public sealed class ResetPasswordRequest
+    public sealed class CustomResetPasswordRequest
     {
         [Required] public string Email { get; set; } = default!;
         [Required] public string Token { get; set; } = default!;

@@ -9,7 +9,7 @@ namespace Optica.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
+//[Authorize(Roles = "Admin")]
 public class UsersController : ControllerBase
 {
     private readonly UserManager<AppUser> _userManager;

@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using Optica.Domain.Dtos;
 using Optica.Domain.Entities;
 using Optica.Domain.Enums;
 using Optica.Infrastructure.Persistence;
@@ -238,13 +239,138 @@ public class HistoriasController : ControllerBase
     }
 
     [HttpGet("ultimas/{pacienteId:guid}")]
-    public async Task<IEnumerable<object>> Ultimas(Guid pacienteId, [FromQuery] int take = 5)
-        => await _db.Visitas
-            .Where(h => h.PacienteId == pacienteId)
-            .OrderByDescending(h => h.Fecha)
+    public async Task<IEnumerable<UltimaVisitaDto>> Ultimas(Guid pacienteId, [FromQuery] int take = 5)
+    {
+        // Para ordenar Ojo y Distancia de forma estable en EF
+        // (ajusta si tus enums tienen otro orden numérico)
+        // Suponiendo: Ojo.OD = 0, Ojo.OI = 1; RxDistancia.Lejos = 0, RxDistancia.Cerca = 1
+        return await _db.Visitas
+            .Where(v => v.PacienteId == pacienteId)
+            .OrderByDescending(v => v.Fecha)
             .Take(take)
-            .Select(h => new { h.Id, h.Fecha, h.Estado, h.Total, ACuenta = h.Pagos.Sum(p => (decimal?)p.Monto) ?? 0, Resta = (h.Total ?? 0) - (h.Pagos.Sum(p => (decimal?)p.Monto) ?? 0) })
+            .Select(v => new UltimaVisitaDto
+            {
+                Id = v.Id,
+                Fecha = v.Fecha,
+                Estado = v.Estado.ToString(), // o .ToString() si es enum
+                Total = v.Total,
+                ACuenta = v.Pagos.Sum(p => (decimal?)p.Monto) ?? 0m,
+                Resta = (v.Total ?? 0m) - (v.Pagos.Sum(p => (decimal?)p.Monto) ?? 0m),
+
+                // Solo el último pago (opcional; si no lo necesitas, quítalo)
+                UltimoPago = v.Pagos
+                    .OrderByDescending(p => p.Fecha)
+                    .Select(p => new PagoMiniDto
+                    {
+                        Fecha = p.Fecha,
+                        Monto = p.Monto,
+                        Metodo = p.Metodo.ToString(), // si es enum
+                        Autorizacion = p.Autorizacion,
+                        Nota = p.Nota
+                    })
+                    .FirstOrDefault(),
+
+                // RX por visita
+                Rx = v.Rx
+                    .OrderBy(m => m.Distancia)   // Lejos (0) antes que Cerca (1)
+                    .ThenBy(m => m.Ojo)          // OD (0) antes que OI (1)
+                    .Select(m => new RxMedicionDto
+                    {
+                        Ojo = m.Ojo.ToString(),
+                        Distancia = m.Distancia.ToString(),
+                        Esf = m.Esf,
+                        Cyl = m.Cyl,
+                        Eje = m.Eje,
+                        Add = m.Add,
+                        Dip = m.Dip,
+                        AltOblea = m.AltOblea
+                    })
+                    .ToList()
+            })
             .ToListAsync();
+    }
+
+    [HttpGet("visitas/{id:guid}")]
+    public async Task<ActionResult<VisitaDetalleDto>> Detalle(Guid id)
+    {
+        var dto = await _db.Visitas
+            .Where(v => v.Id == id)
+            .Select(v => new VisitaDetalleDto
+            {
+                Id = v.Id,
+                Fecha = v.Fecha,
+                Estado = v.Estado.ToString(),
+                Total = v.Total,
+                ACuenta = v.Pagos.Sum(p => (decimal?)p.Monto) ?? 0m,
+                Resta = (v.Total ?? 0m) - (v.Pagos.Sum(p => (decimal?)p.Monto) ?? 0m),
+
+                PacienteId = v.PacienteId,
+                PacienteNombre = v.Paciente.Nombre,
+                PacienteTelefono = v.Paciente.Telefono,
+
+                Rx = v.Rx
+                    .OrderBy(m => m.Distancia)   // o usa ternarios si tus enums difieren
+                    .ThenBy(m => m.Ojo)
+                    .Select(m => new RxMedicionDto
+                    {
+                        Ojo = m.Ojo.ToString(),
+                        Distancia = m.Distancia.ToString(),
+                        Esf = m.Esf,
+                        Cyl = m.Cyl,
+                        Eje = m.Eje,
+                        Add = m.Add,
+                        Dip = m.Dip,
+                        AltOblea = m.AltOblea
+                    }).ToList(),
+
+                Av = v.Agudezas
+                    .OrderBy(a => a.Condicion)
+                    .ThenBy(a => a.Ojo)
+                    .Select(a => new AgudezaVisual()
+                    {
+                        Ojo = a.Ojo,
+                        Condicion = a.Condicion,
+                        Denominador = a.Denominador
+                    }).ToList(),
+
+                Pagos = v.Pagos
+                    .OrderByDescending(p => p.Fecha)
+                    .Select(p => new PagoMiniDto
+                    {
+                        Fecha = p.Fecha,
+                        Monto = p.Monto,
+                        Metodo = p.Metodo.ToString(),
+                        Autorizacion = p.Autorizacion,
+                        Nota = p.Nota
+                    }).ToList(),
+
+                FechaEstimadaEntrega = v.FechaEstimadaEntrega,
+                FechaRecibidaSucursal = v.FechaRecibidoSucursal,
+                FechaEntregadaCliente = v.FechaEntregaCliente,
+
+                Materiales = v.Materiales
+                    .Select(x => new MaterialSeleccionDto
+                    {
+                        MaterialId = x.MaterialId,
+                        Descripcion = x.Material.Descripcion,
+                        Marca = x.Material.Marca,
+                        Observaciones = x.Observaciones
+                    }).ToList(),
+
+                LentesContacto = v.LentesContacto
+                    .Select(x => new LenteContactoSeleccionDto
+                    {
+                        Tipo = x.Tipo.ToString(),
+                        Marca = x.Marca,
+                        Modelo = x.Modelo,
+                        Observaciones = x.Observaciones
+                    }).ToList()
+            })
+            .FirstOrDefaultAsync();
+
+        if (dto == null) return NotFound();
+        return dto;
+    }
 
     public sealed record EnviarLabRequest(decimal total, PagoDto[]? pagos, DateTime? fechaEstimadaEntrega);
 
@@ -384,4 +510,6 @@ public class HistoriasController : ControllerBase
         await _db.SaveChangesAsync();
         return NoContent();
     }
+
+
 }

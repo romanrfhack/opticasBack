@@ -7,7 +7,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 using Optica.Api.Auth;
-using Optica.Domain.Entities;
 using Optica.Domain.Enums;
 using Optica.Infrastructure;
 using Optica.Infrastructure.Identity;
@@ -123,6 +122,10 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     await SeedData(db, sp);
 }
+
+// Agregar esto temporalmente para verificar
+Console.WriteLine($"Ambiente: {app.Environment.EnvironmentName}");
+Console.WriteLine($"IsDevelopment: {app.Environment.IsDevelopment()}");
 
 // Pipeline
 // ↓ CORS debe ir antes de Auth

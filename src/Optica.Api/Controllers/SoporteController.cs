@@ -55,7 +55,7 @@ namespace Optica.Api.Controllers
 
         // GET /api/soporte (admin)
         [HttpGet]
-        [Authorize(Roles = "Admin")]
+        //[Authorize(Roles = "Admin")]
         public async Task<ActionResult<IEnumerable<SupportTicket>>> Listar(int take = 100)
         {
             var list = await _db.SupportTickets

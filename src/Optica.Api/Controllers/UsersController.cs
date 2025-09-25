@@ -23,7 +23,7 @@ public class UsersController : ControllerBase
         _db = db;
     }
 
-    public sealed record UserItem(Guid Id, string Email, string? FullName, Guid SucursalId, string SucursalNombre, string[] Roles, bool LockedOut);
+    public sealed record UserItem(Guid Id, string Email, string? FullName, string? PhoneNumber, Guid SucursalId, string SucursalNombre, string[] Roles, bool LockedOut);
     public sealed record CreateUserRequest(string Email, string FullName, Guid SucursalId, string Password, string[] Roles);
     public sealed record UpdateUserRequest(string FullName, Guid SucursalId, string[] Roles);
     public sealed record ResetPasswordRequest(string NewPassword);
@@ -55,7 +55,7 @@ public class UsersController : ControllerBase
         {
             var roles = await _userManager.GetRolesAsync(u);
             var locked = u.LockoutEnd.HasValue && u.LockoutEnd.Value.UtcDateTime > DateTime.UtcNow;
-            items.Add(new UserItem(u.Id, u.Email!, u.FullName, u.SucursalId, sucursales.GetValueOrDefault(u.SucursalId, ""), roles.ToArray(), locked));
+            items.Add(new UserItem(u.Id, u.Email!, u.FullName, u.PhoneNumber, u.SucursalId, sucursales.GetValueOrDefault(u.SucursalId, ""), roles.ToArray(), locked));
         }
 
         return Ok(new { total, items });
@@ -85,7 +85,7 @@ public class UsersController : ControllerBase
 
         var suc = await _db.Sucursales.FindAsync(req.SucursalId);
         var roles = await _userManager.GetRolesAsync(user);
-        return CreatedAtAction(nameof(GetById), new { id = user.Id }, new UserItem(user.Id, user.Email!, user.FullName, user.SucursalId, suc?.Nombre ?? "", roles.ToArray(), false));
+        return CreatedAtAction(nameof(GetById), new { id = user.Id }, new UserItem(user.Id, user.Email!, user.FullName, user.PhoneNumber, user.SucursalId, suc?.Nombre ?? "", roles.ToArray(), false));
     }
 
     [HttpGet("{id:guid}")]
@@ -96,7 +96,8 @@ public class UsersController : ControllerBase
         var roles = await _userManager.GetRolesAsync(u);
         var suc = await _db.Sucursales.FindAsync(u.SucursalId);
         var locked = u.LockoutEnd.HasValue && u.LockoutEnd.Value.UtcDateTime > DateTime.UtcNow;
-        return new UserItem(u.Id, u.Email!, u.FullName, u.SucursalId, suc?.Nombre ?? "", roles.ToArray(), locked);
+
+        return new UserItem(u.Id, u.Email!, u.FullName, u.PhoneNumber, u.SucursalId, suc?.Nombre ?? "", roles.ToArray(), locked);
     }
 
     [HttpPut("{id:guid}")]

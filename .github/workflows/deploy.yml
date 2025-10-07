@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 env:
-  PROJECT_PATH: 'src/Optica.Api'  # RUTA CORREGIDA
+  PROJECT_PATH: 'src/Optica.Api'
   PUBLISH_DIR: 'publish'
 
 jobs:
@@ -55,6 +55,10 @@ jobs:
         script: |
           echo "🎯 Iniciando deployment..."
           
+          # Verificar archivos desplegados
+          echo "📁 Archivos en backend:"
+          ls -la /var/www/mi-optica/backend/
+          
           # Dar permisos de ejecución
           sudo chmod +x /var/www/mi-optica/backend/Optica.API
           sudo chown -R www-data:www-data /var/www/mi-optica/backend
@@ -62,11 +66,15 @@ jobs:
           # Detener servicio si está corriendo
           sudo systemctl stop kestrel-optica || true
           
-          # Iniciar servicio
+          # Iniciar servicio (ejecutará migraciones automáticamente)
           sudo systemctl start kestrel-optica
           
           # Esperar y verificar estado
-          sleep 5
+          sleep 10
           sudo systemctl status kestrel-optica --no-pager
           
-          echo "✅ Deployment completado"
+          # Probar que la API responde
+          echo "🧪 Probando API..."
+          curl -f http://localhost:5000/health || echo "⚠️ API aún iniciando..."
+          
+          echo "✅ Deployment completado - API desplegada en puerto 5000"

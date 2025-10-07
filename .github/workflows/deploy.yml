@@ -3,16 +3,13 @@
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 env:
-  PROJECT_NAME: 'Optica.Api'
+  PROJECT_PATH: 'src/Optica.Api'  # RUTA CORREGIDA
   PUBLISH_DIR: 'publish'
 
 jobs:
   build-and-deploy:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     
     steps:
@@ -26,17 +23,17 @@ jobs:
         
     - name: 📦 Restore dependencies
       run: |
-        cd ${{ env.PROJECT_NAME }}
+        cd ${{ env.PROJECT_PATH }}
         dotnet restore
         
     - name: 🏗️ Build application
       run: |
-        cd ${{ env.PROJECT_NAME }}
+        cd ${{ env.PROJECT_PATH }}
         dotnet build --configuration Release --no-restore
         
     - name: 📤 Publish application
       run: |
-        cd ${{ env.PROJECT_NAME }}
+        cd ${{ env.PROJECT_PATH }}
         dotnet publish -c Release -o ${{ env.PUBLISH_DIR }} --no-build
         
     - name: 🔐 Deploy to VPS
@@ -45,7 +42,7 @@ jobs:
         host: ${{ secrets.VPS_HOST }}
         username: ${{ secrets.VPS_USER }}
         key: ${{ secrets.VPS_SSH_KEY }}
-        source: "${{ env.PROJECT_NAME }}/${{ env.PUBLISH_DIR }}/"
+        source: "${{ env.PROJECT_PATH }}/${{ env.PUBLISH_DIR }}/"
         target: "/var/www/mi-optica/backend/"
         strip_components: 2
         
@@ -65,14 +62,11 @@ jobs:
           # Detener servicio si está corriendo
           sudo systemctl stop kestrel-optica || true
           
-          # Iniciar servicio (ejecutará migraciones automáticamente)
+          # Iniciar servicio
           sudo systemctl start kestrel-optica
           
           # Esperar y verificar estado
           sleep 5
           sudo systemctl status kestrel-optica --no-pager
           
-          # Verificar que la API esté respondiendo
-          curl -f http://localhost:5000/health || echo "API aún iniciando..."
-          
-          echo "✅ Deployment completado - API desplegada en puerto 5000"
+          echo "✅ Deployment completado"

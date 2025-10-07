@@ -1,0 +1,78 @@
+﻿name: 🚀 Deploy Optica API to VPS
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PROJECT_NAME: 'Optica.Api'
+  PUBLISH_DIR: 'publish'
+
+jobs:
+  build-and-deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🔧 Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: 📦 Restore dependencies
+      run: |
+        cd ${{ env.PROJECT_NAME }}
+        dotnet restore
+        
+    - name: 🏗️ Build application
+      run: |
+        cd ${{ env.PROJECT_NAME }}
+        dotnet build --configuration Release --no-restore
+        
+    - name: 📤 Publish application
+      run: |
+        cd ${{ env.PROJECT_NAME }}
+        dotnet publish -c Release -o ${{ env.PUBLISH_DIR }} --no-build
+        
+    - name: 🔐 Deploy to VPS
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        source: "${{ env.PROJECT_NAME }}/${{ env.PUBLISH_DIR }}/"
+        target: "/var/www/mi-optica/backend/"
+        strip_components: 2
+        
+    - name: 🔄 Restart API Service
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        script: |
+          echo "🎯 Iniciando deployment..."
+          
+          # Dar permisos de ejecución
+          sudo chmod +x /var/www/mi-optica/backend/Optica.API
+          sudo chown -R www-data:www-data /var/www/mi-optica/backend
+          
+          # Detener servicio si está corriendo
+          sudo systemctl stop kestrel-optica || true
+          
+          # Iniciar servicio (ejecutará migraciones automáticamente)
+          sudo systemctl start kestrel-optica
+          
+          # Esperar y verificar estado
+          sleep 5
+          sudo systemctl status kestrel-optica --no-pager
+          
+          # Verificar que la API esté respondiendo
+          curl -f http://localhost:5000/health || echo "API aún iniciando..."
+          
+          echo "✅ Deployment completado - API desplegada en puerto 5000"

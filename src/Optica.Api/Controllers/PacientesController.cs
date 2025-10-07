@@ -157,6 +157,116 @@ public class PacientesController : ControllerBase
         return dto;
     }
 
+    [HttpGet("grid")]
+    public async Task<PagedResult<PacienteGridItemDto>> Grid([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        page = page <= 0 ? 1 : page;
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
+        var baseQ = _db.Pacientes.AsNoTracking();
+        var total = await baseQ.CountAsync();
+
+        var items = await baseQ
+            .OrderBy(p => p.Nombre)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(p => new PacienteGridItemDto
+            {
+                Id = p.Id,
+                Nombre = p.Nombre!,
+                Edad = p.Edad,
+                Telefono = p.Telefono,
+                Ocupacion = p.Ocupacion,
+
+                UltimaVisitaFecha = p.Visitas.OrderByDescending(v => v.Fecha).Select(v => (DateTime?)v.Fecha).FirstOrDefault(),
+                UltimaVisitaEstado = p.Visitas.OrderByDescending(v => v.Fecha).Select(v => v.Estado.ToString()).FirstOrDefault(),
+                UltimaVisitaTotal = p.Visitas.OrderByDescending(v => v.Fecha).Select(v => v.Total).FirstOrDefault(),
+                UltimaVisitaACuenta = p.Visitas.OrderByDescending(v => v.Fecha)
+                    .Select(v => v.Pagos.Sum(pg => (decimal?)pg.Monto) ?? 0m).FirstOrDefault(),
+                UltimaVisitaResta = p.Visitas.OrderByDescending(v => v.Fecha)
+                    .Select(v => (v.Total ?? 0m) - (v.Pagos.Sum(pg => (decimal?)pg.Monto) ?? 0m)).FirstOrDefault(),
+
+                UltimoPagoFecha = p.Visitas.SelectMany(v => v.Pagos)
+                    .OrderByDescending(pg => pg.Fecha).Select(pg => (DateTime?)pg.Fecha).FirstOrDefault(),
+                UltimoPagoMonto = p.Visitas.SelectMany(v => v.Pagos)
+                    .OrderByDescending(pg => pg.Fecha).Select(pg => (decimal?)pg.Monto).FirstOrDefault(),
+
+                TieneOrdenPendiente =
+                    p.Visitas.OrderByDescending(v => v.Fecha)
+                        .Select(v => v.Estado == EstadoHistoria.EnLaboratorio ||
+                                     ((v.Total ?? 0m) - (v.Pagos.Sum(pg => (decimal?)pg.Monto) ?? 0m)) > 0m)
+                        .FirstOrDefault()
+            })
+            .ToListAsync();
+
+        return new PagedResult<PacienteGridItemDto>
+        {
+            Page = page,
+            PageSize = pageSize,
+            Total = total,
+            Items = items
+        };
+    }
+
+    [HttpGet("{pacienteId:guid}/historial")]
+    public async Task<PagedResult<VisitaRowDto>> Historial(
+    Guid pacienteId,
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 20,
+    [FromQuery] EstadoHistoria? estado = null,
+    [FromQuery] DateTime? from = null,
+    [FromQuery] DateTime? to = null,
+    [FromQuery] bool soloPendientes = false)
+    {
+        page = page <= 0 ? 1 : page;
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
+        var q = _db.Visitas.AsNoTracking().Where(v => v.PacienteId == pacienteId);
+
+        if (estado.HasValue) q = q.Where(v => v.Estado == estado.Value);
+        if (from.HasValue) q = q.Where(v => v.Fecha >= from.Value);
+        if (to.HasValue) q = q.Where(v => v.Fecha <= to.Value);
+
+        if (soloPendientes)
+        {
+            q = q.Where(v =>
+                v.Estado == EstadoHistoria.EnLaboratorio ||
+                ((v.Total ?? 0m) - (v.Pagos.Sum(p => (decimal?)p.Monto) ?? 0m)) > 0m
+            );
+        }
+
+        var total = await q.CountAsync();
+
+        var items = await q
+            .OrderByDescending(v => v.Fecha)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(v => new VisitaRowDto
+            {
+                Id = v.Id,
+                Fecha = v.Fecha,
+                Estado = v.Estado.ToString(),
+                Total = v.Total,
+                ACuenta = v.Pagos.Sum(p => (decimal?)p.Monto) ?? 0m,
+                Resta = (v.Total ?? 0m) - (v.Pagos.Sum(p => (decimal?)p.Monto) ?? 0m),
+
+                UltimoPagoFecha = v.Pagos.OrderByDescending(p => p.Fecha)
+                                         .Select(p => (DateTime?)p.Fecha).FirstOrDefault(),
+                UltimoPagoMonto = v.Pagos.OrderByDescending(p => p.Fecha)
+                                         .Select(p => (decimal?)p.Monto).FirstOrDefault(),
+
+                FechaEstimadaEntrega = v.FechaEstimadaEntrega,
+                FechaRecibidaSucursal = v.FechaRecibidoSucursal,
+                FechaEntregadaCliente = v.FechaEntregaCliente
+            })
+            .ToListAsync();
+
+        return new PagedResult<VisitaRowDto>
+        {
+            Page = page,
+            PageSize = pageSize,
+            Total = total,
+            Items = items
+        };
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<Paciente>> GetById(Guid id)

@@ -113,6 +113,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+app.UsePathBase("/api");
 
 // Migraciones + datos demo
 using (var scope = app.Services.CreateScope())

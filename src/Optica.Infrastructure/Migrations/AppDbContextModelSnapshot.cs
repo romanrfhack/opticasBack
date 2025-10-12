@@ -367,6 +367,17 @@ namespace Optica.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("CreadoPorEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CreadoPorNombre")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("CreadoPorUsuarioId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Direccion")
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
@@ -375,12 +386,20 @@ namespace Optica.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<DateTime>("FechaRegistro")
-                        .HasColumnType("datetime2");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NombreNormalized")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasComputedColumnSql("UPPER(LTRIM(RTRIM([Nombre])))", true);
 
                     b.Property<string>("Ocupacion")
                         .IsRequired()
@@ -395,9 +414,21 @@ namespace Optica.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<string>("TelefonoNormalized")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasComputedColumnSql("LTRIM(RTRIM([Telefono]))", true);
+
                     b.HasKey("Id");
 
-                    b.ToTable("Pacientes");
+                    b.HasIndex("SucursalIdAlta");
+
+                    b.HasIndex("NombreNormalized", "TelefonoNormalized")
+                        .IsUnique()
+                        .HasFilter("[Nombre] IS NOT NULL AND [Telefono] IS NOT NULL AND [Telefono] <> ''");
+
+                    b.ToTable("Pacientes", (string)null);
                 });
 
             modelBuilder.Entity("Optica.Domain.Entities.PrescripcionLenteContacto", b =>
@@ -799,6 +830,17 @@ namespace Optica.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Producto");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.Paciente", b =>
+                {
+                    b.HasOne("Optica.Domain.Entities.Sucursal", "SucursalAlta")
+                        .WithMany()
+                        .HasForeignKey("SucursalIdAlta")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SucursalAlta");
                 });
 
             modelBuilder.Entity("Optica.Domain.Entities.PrescripcionLenteContacto", b =>

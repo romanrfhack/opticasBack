@@ -1,8 +1,7 @@
-using System.Text;
-
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
@@ -12,6 +11,9 @@ using Optica.Infrastructure;
 using Optica.Infrastructure.Identity;
 using Optica.Infrastructure.Persistence;
 
+using System.IdentityModel.Tokens.Jwt;
+using System.Text;
+
 const string CorsLocal = "CorsLocal";
 const string CorsProd = "CorsProd";
 
@@ -19,6 +21,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Infraestructura (registra AppDbContext con la connection string)
 builder.Services.AddInfrastructure(builder.Configuration);
+
+JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
 // Identity + Roles
 builder.Services
@@ -70,6 +74,7 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
+        o.MapInboundClaims = false; // .NET 8+
         o.TokenValidationParameters = new()
         {
             ValidateIssuer = true,
@@ -145,32 +150,26 @@ app.Run();
 static async Task SeedData(AppDbContext db, IServiceProvider sp)
 {
     // Sucursales
-    if (!await db.Sucursales.AnyAsync())
-    {
-        db.Sucursales.AddRange(
-            new() { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Nombre = "Sucursal Centro" },
-            new() { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Nombre = "Sucursal Norte" }
-        );
-    }
+
 
     // Productos demo
-    if (!await db.Productos.AnyAsync())
-    {
-        db.Productos.AddRange(
-            new() { Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"), Sku = "ARZ-001", Nombre = "Armazón Clásico Negro", Categoria = CategoriaProducto.Armazon },
-            new() { Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"), Sku = "ACC-001", Nombre = "Estuche Rígido", Categoria = CategoriaProducto.Accesorio }
-        );
-    }
+    //if (!await db.Productos.AnyAsync())
+    //{
+    //    db.Productos.AddRange(
+    //        new() { Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"), Sku = "ARZ-001", Nombre = "Armazón Clásico Negro", Categoria = CategoriaProducto.Armazon },
+    //        new() { Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"), Sku = "ACC-001", Nombre = "Estuche Rígido", Categoria = CategoriaProducto.Accesorio }
+    //    );
+    //}
 
     // Inventarios demo
-    if (!await db.Inventarios.AnyAsync())
-    {
-        db.Inventarios.AddRange(
-            new() { Id = Guid.NewGuid(), ProductoId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"), SucursalId = Guid.Parse("11111111-1111-1111-1111-111111111111"), Stock = 5, StockMin = 2 },
-            new() { Id = Guid.NewGuid(), ProductoId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"), SucursalId = Guid.Parse("22222222-2222-2222-2222-222222222222"), Stock = 3, StockMin = 2 },
-            new() { Id = Guid.NewGuid(), ProductoId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"), SucursalId = Guid.Parse("11111111-1111-1111-1111-111111111111"), Stock = 10, StockMin = 4 }
-        );
-    }
+    //if (!await db.Inventarios.AnyAsync())
+    //{
+    //    db.Inventarios.AddRange(
+    //        new() { Id = Guid.NewGuid(), ProductoId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"), SucursalId = Guid.Parse("11111111-1111-1111-1111-111111111111"), Stock = 5, StockMin = 2 },
+    //        new() { Id = Guid.NewGuid(), ProductoId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"), SucursalId = Guid.Parse("22222222-2222-2222-2222-222222222222"), Stock = 3, StockMin = 2 },
+    //        new() { Id = Guid.NewGuid(), ProductoId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"), SucursalId = Guid.Parse("11111111-1111-1111-1111-111111111111"), Stock = 10, StockMin = 4 }
+    //    );
+    //}
 
     await db.SaveChangesAsync();
 

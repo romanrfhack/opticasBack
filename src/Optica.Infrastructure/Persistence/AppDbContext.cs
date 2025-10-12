@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+
 using Optica.Domain.Entities;
 using Optica.Domain.Enums;
 using Optica.Infrastructure.Identity;
@@ -16,7 +17,6 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
     public DbSet<InventarioMovimiento> Movimientos => Set<InventarioMovimiento>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Paciente> Pacientes => Set<Paciente>();
-    //public DbSet<HistoriaClinicaVisita> Historias => Set<HistoriaClinicaVisita>();
     public DbSet<AgudezaVisual> Agudezas => Set<AgudezaVisual>();
     public DbSet<RxMedicion> RxMediciones => Set<RxMedicion>();
     public DbSet<Material> Materiales => Set<Material>();
@@ -25,8 +25,6 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
     public DbSet<HistoriaPago> HistoriaPagos => Set<HistoriaPago>();
     public DbSet<HistoriaClinicaVisita> Visitas => Set<HistoriaClinicaVisita>();
     public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
-
-
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -69,19 +67,64 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
             cfg.HasIndex(x => x.Fecha);
         });
 
-        b.Entity<AppUser>(cfg => { cfg.Property(x => x.FullName).HasMaxLength(120); });
-        b.Entity<RefreshToken>(cfg => { cfg.ToTable("AuthRefreshTokens"); cfg.HasKey(x => x.Id); cfg.HasIndex(x => x.Token).IsUnique(); });
+        // ---------- AppUser / RefreshToken ----------
+        b.Entity<AppUser>(cfg =>
+        {
+            cfg.Property(x => x.FullName).HasMaxLength(120);
+        });
+
+        b.Entity<RefreshToken>(cfg =>
+        {
+            cfg.ToTable("AuthRefreshTokens");
+            cfg.HasKey(x => x.Id);
+            cfg.HasIndex(x => x.Token).IsUnique();
+        });
+
+        // ---------- Paciente ----------
+        b.Entity<Paciente>(cfg =>
+        {
+            cfg.ToTable("Pacientes");
+            cfg.HasKey(x => x.Id);
+
+            // Relación con Sucursal
+            cfg.HasOne(p => p.SucursalAlta)
+                .WithMany()
+                .HasForeignKey(p => p.SucursalIdAlta);
+
+            // Propiedades principales
+            cfg.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
+            cfg.Property(x => x.Telefono).HasMaxLength(30);
+            cfg.Property(x => x.Ocupacion).HasMaxLength(120);
+            cfg.Property(x => x.Direccion).HasMaxLength(300);
+
+            // Auditoría
+            cfg.Property(x => x.CreadoPorUsuarioId);
+            cfg.Property(x => x.CreadoPorNombre).HasMaxLength(200);
+            cfg.Property(x => x.CreadoPorEmail).HasMaxLength(200);
+
+            // Fecha de registro con default UTC
+            cfg.Property(x => x.FechaRegistro)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            // Columnas normalizadas persistidas
+            cfg.Property(x => x.NombreNormalized)
+                .HasMaxLength(200)
+                .HasComputedColumnSql("UPPER(LTRIM(RTRIM([Nombre])))", stored: true);
+
+            cfg.Property(x => x.TelefonoNormalized)
+                .HasMaxLength(30)
+                .HasComputedColumnSql("LTRIM(RTRIM([Telefono]))", stored: true);
+
+            // Índice único por nombre + teléfono normalizados
+            cfg.HasIndex(x => new { x.NombreNormalized, x.TelefonoNormalized })
+                .IsUnique()
+                .HasFilter("[Nombre] IS NOT NULL AND [Telefono] IS NOT NULL AND [Telefono] <> ''");
+        });
+
 
         b.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
-    // 1) Aplica todas tus IEntityTypeConfiguration<T> automáticamente
-    //protected override void OnModelCreating(ModelBuilder modelBuilder)
-    //{
-    //    base.OnModelCreating(modelBuilder);
-    //    modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
-    //}
 
-    // 2) Convención global para decimales -> decimal(12,2)
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<decimal>().HavePrecision(12, 2);

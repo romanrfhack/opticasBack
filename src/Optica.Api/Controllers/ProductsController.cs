@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Optica.Application.Productos.Dtos;
 using Optica.Domain.Entities;
 using Optica.Domain.Enums;
 using Optica.Infrastructure.Persistence;
@@ -86,5 +87,61 @@ public class ProductsController : ControllerBase
         _db.Productos.Remove(p);
         await _db.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpGet("armazones")]
+    public async Task<ActionResult<IEnumerable<ProductArmazonDto>>> GetArmazones([FromQuery] string? q = null)
+    {
+        var sucursalId = Guid.Parse(User.FindFirst("sucursalId")!.Value);
+        var term = (q ?? "").Trim();
+        var like = $"%{term}%";
+
+        // Consulta para obtener productos con información de inventario
+        var query = _db.Productos
+            .Where(p => p.Categoria == CategoriaProducto.Armazon && p.Activo)
+            .Select(p => new
+            {
+                Producto = p,
+                // Stock en sucursal activa
+                StockSucursalActiva = p.Inventarios
+                    .Where(i => i.SucursalId == sucursalId)
+                    .Select(i => i.Stock)
+                    .FirstOrDefault(),
+                // Todas las sucursales con stock
+                SucursalesConStock = p.Inventarios
+                    .Where(i => i.Stock > 0)
+                    .Select(i => new SucursalStockDto
+                    {
+                        SucursalId = i.SucursalId,
+                        NombreSucursal = i.Sucursal.Nombre,
+                        Stock = i.Stock
+                    })
+                    .ToList()
+            });
+
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            query = query.Where(x =>
+                EF.Functions.Like(x.Producto.Sku, like) ||
+                EF.Functions.Like(x.Producto.Nombre, like));
+        }
+
+        var result = await query.OrderBy(x => x.Producto.Nombre).ToListAsync();
+
+        // Mapear a DTO
+        var list = result.Select(x => new ProductArmazonDto(
+            x.Producto.Id,
+            x.Producto.Sku,
+            x.Producto.Nombre,
+            x.Producto.Categoria.ToString(),
+            x.Producto.Activo,
+            x.StockSucursalActiva,  // Stock en sucursal activa
+            x.StockSucursalActiva > 0  // EnSucursalActiva
+        )
+        {
+            SucursalesConStock = x.SucursalesConStock
+        }).ToList();
+
+        return Ok(list);
     }
 }

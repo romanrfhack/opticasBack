@@ -12,8 +12,8 @@ using Optica.Infrastructure.Persistence;
 namespace Optica.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20250910045343_AuthInit")]
-    partial class AuthInit
+    [Migration("20251010212708_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -156,6 +156,128 @@ namespace Optica.Infrastructure.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Optica.Domain.Entities.AgudezaVisual", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Condicion")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Denominador")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Ojo")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("VisitaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VisitaId");
+
+                    b.ToTable("Agudezas");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.HistoriaClinicaVisita", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("ACuenta")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<Guid?>("ArmazonProductoId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEntregaCliente")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEnvioLaboratorio")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaEstimadaEntrega")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FechaRecibidoSucursal")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("HistoriaClinicaVisitaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("MaterialId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Observaciones")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PacienteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("Resta")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<Guid>("SucursalId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("Total")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HistoriaClinicaVisitaId");
+
+                    b.HasIndex("PacienteId");
+
+                    b.ToTable("Visitas");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.HistoriaPago", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Autorizacion")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<DateTime>("Fecha")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Metodo")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Monto")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("Nota")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("VisitaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VisitaId", "Fecha");
+
+                    b.ToTable("HistoriaPagos", (string)null);
+                });
+
             modelBuilder.Entity("Optica.Domain.Entities.Inventario", b =>
                 {
                     b.Property<Guid>("Id")
@@ -221,6 +343,149 @@ namespace Optica.Infrastructure.Migrations
                     b.ToTable("InventarioMovimientos", (string)null);
                 });
 
+            modelBuilder.Entity("Optica.Domain.Entities.Material", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Descripcion")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Marca")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Materiales");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.Paciente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreadoPorEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CreadoPorNombre")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("CreadoPorUsuarioId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Direccion")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("Edad")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NombreNormalized")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasComputedColumnSql("UPPER(LTRIM(RTRIM([Nombre])))", true);
+
+                    b.Property<string>("Ocupacion")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("SucursalIdAlta")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Telefono")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TelefonoNormalized")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasComputedColumnSql("LTRIM(RTRIM([Telefono]))", true);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SucursalIdAlta");
+
+                    b.HasIndex("NombreNormalized", "TelefonoNormalized")
+                        .IsUnique()
+                        .HasFilter("[Nombre] IS NOT NULL AND [Telefono] IS NOT NULL AND [Telefono] <> ''");
+
+                    b.ToTable("Pacientes", (string)null);
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.PrescripcionLenteContacto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Marca")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Modelo")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Observaciones")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("VisitaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VisitaId");
+
+                    b.ToTable("PrescripcionesLenteContacto");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.PrescripcionMaterial", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MaterialId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Observaciones")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("VisitaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialId");
+
+                    b.HasIndex("VisitaId");
+
+                    b.ToTable("PrescripcionesMaterial");
+                });
+
             modelBuilder.Entity("Optica.Domain.Entities.Producto", b =>
                 {
                     b.Property<Guid>("Id")
@@ -281,6 +546,52 @@ namespace Optica.Infrastructure.Migrations
                     b.ToTable("AuthRefreshTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Optica.Domain.Entities.RxMedicion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("Add")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("AltOblea")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("Cyl")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<string>("Dip")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("Distancia")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Eje")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("Esf")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int>("Ojo")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("VisitaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VisitaId", "Ojo", "Distancia")
+                        .IsUnique();
+
+                    b.ToTable("RxMediciones", (string)null);
+                });
+
             modelBuilder.Entity("Optica.Domain.Entities.Sucursal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -298,6 +609,39 @@ namespace Optica.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Sucursales", (string)null);
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.SupportTicket", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Asunto")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Mensaje")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SupportTickets");
                 });
 
             modelBuilder.Entity("Optica.Infrastructure.Identity.AppUser", b =>
@@ -424,6 +768,43 @@ namespace Optica.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Optica.Domain.Entities.AgudezaVisual", b =>
+                {
+                    b.HasOne("Optica.Domain.Entities.HistoriaClinicaVisita", "Visita")
+                        .WithMany("Agudezas")
+                        .HasForeignKey("VisitaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Visita");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.HistoriaClinicaVisita", b =>
+                {
+                    b.HasOne("Optica.Domain.Entities.HistoriaClinicaVisita", null)
+                        .WithMany("Visitas")
+                        .HasForeignKey("HistoriaClinicaVisitaId");
+
+                    b.HasOne("Optica.Domain.Entities.Paciente", "Paciente")
+                        .WithMany("Visitas")
+                        .HasForeignKey("PacienteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Paciente");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.HistoriaPago", b =>
+                {
+                    b.HasOne("Optica.Domain.Entities.HistoriaClinicaVisita", "Visita")
+                        .WithMany("Pagos")
+                        .HasForeignKey("VisitaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Visita");
+                });
+
             modelBuilder.Entity("Optica.Domain.Entities.Inventario", b =>
                 {
                     b.HasOne("Optica.Domain.Entities.Producto", "Producto")
@@ -452,6 +833,78 @@ namespace Optica.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Producto");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.Paciente", b =>
+                {
+                    b.HasOne("Optica.Domain.Entities.Sucursal", "SucursalAlta")
+                        .WithMany()
+                        .HasForeignKey("SucursalIdAlta")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SucursalAlta");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.PrescripcionLenteContacto", b =>
+                {
+                    b.HasOne("Optica.Domain.Entities.HistoriaClinicaVisita", "Visita")
+                        .WithMany("LentesContacto")
+                        .HasForeignKey("VisitaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Visita");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.PrescripcionMaterial", b =>
+                {
+                    b.HasOne("Optica.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Optica.Domain.Entities.HistoriaClinicaVisita", "Visita")
+                        .WithMany("Materiales")
+                        .HasForeignKey("VisitaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("Visita");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.RxMedicion", b =>
+                {
+                    b.HasOne("Optica.Domain.Entities.HistoriaClinicaVisita", "Visita")
+                        .WithMany("Rx")
+                        .HasForeignKey("VisitaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Visita");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.HistoriaClinicaVisita", b =>
+                {
+                    b.Navigation("Agudezas");
+
+                    b.Navigation("LentesContacto");
+
+                    b.Navigation("Materiales");
+
+                    b.Navigation("Pagos");
+
+                    b.Navigation("Rx");
+
+                    b.Navigation("Visitas");
+                });
+
+            modelBuilder.Entity("Optica.Domain.Entities.Paciente", b =>
+                {
+                    b.Navigation("Visitas");
                 });
 
             modelBuilder.Entity("Optica.Domain.Entities.Producto", b =>

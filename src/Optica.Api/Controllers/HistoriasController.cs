@@ -8,7 +8,8 @@ using Optica.Domain.Enums;
 using Optica.Infrastructure.Persistence;
 
 using System.Security.Claims;
-
+using System.IdentityModel.Tokens.Jwt;
+using Optica.Application.Visitas.Dtos;
 using static System.Math;
 
 namespace Optica.Api.Controllers;
@@ -35,7 +36,7 @@ public class HistoriasController : ControllerBase
     //    decimal? esf, decimal? cyl, int? eje, decimal? add,
     //    string? dip, decimal? altOblea);
 
-    public sealed record MaterialDto(Guid materialId, string? observaciones);
+    public sealed record MaterialCHDto(Guid materialId, string? observaciones);
 
     // tipo: "Esferico" | "Torico" | "Otro"
     public sealed record LcDto(string tipo, string? marca, string? modelo, string? observaciones);
@@ -43,18 +44,20 @@ public class HistoriasController : ControllerBase
     // metodo: "Efectivo" | "Tarjeta"
     //public sealed record PagoDto(decimal monto, string metodo, string? autorizacion, string? nota);
 
+    public sealed record ArmazonDto(Guid productoId, string? observaciones);
+
     public sealed record CrearHistoriaRequest(
         Guid pacienteId,
         string? observaciones,
         AgudezaDto[] av,
         RxDto[] rx,
-        MaterialDto[] materiales,
-        LcDto[] lentesContacto
+        MaterialCHDto[] materiales,
+        LcDto[] lentesContacto,
+        ArmazonDto[] armazones
     );
 
     //DTOS
     
-
     public record UltimaHistoriaItemDto(Guid Id, DateTime Fecha, string Estado, decimal? Total, decimal? ACuenta, decimal? Resta);
 
     public record HistoriaResumenDto(
@@ -90,7 +93,7 @@ public class HistoriasController : ControllerBase
         DateTime? FechaEstimadaEntrega
     );
 
-    public record RxDto(string Ojo, string Distancia, decimal? Esf, decimal? Cyl, int? Eje, decimal? Add, string? DIP, decimal? AltOblea);
+    public record RxDto(string Ojo, string Distancia, decimal? Esf, decimal? Cyl, int? Eje, decimal? Add, string? Dip, decimal? AltOblea);
     public record MaterialSeleccionadoDto(Guid MaterialId, string Descripcion, string? Marca, string? Observaciones);
     public record LenteContactoDto(string Tipo, string? Marca, string? Modelo, string? Observaciones);
 
@@ -109,15 +112,35 @@ public class HistoriasController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<object>> Crear(CrearHistoriaRequest req)
     {
+        // Obtener información del usuario
         var sucursalId = Guid.Parse(User.FindFirst("sucursalId")!.Value);
 
+        string? GetClaim(params string[] types)
+            => types.Select(t => User.FindFirst(t)?.Value)
+                .FirstOrDefault(v => !string.IsNullOrEmpty(v));
+
+        var userIdStr = GetClaim(JwtRegisteredClaimNames.Sub, ClaimTypes.NameIdentifier, "sub");
+        var userEmail = GetClaim(JwtRegisteredClaimNames.Email, ClaimTypes.Email, "email");
+        var userName = GetClaim("name", ClaimTypes.Name, JwtRegisteredClaimNames.UniqueName) ?? User.Identity?.Name;
+
+        if (string.IsNullOrEmpty(userIdStr))
+        {
+            return BadRequest("No se pudo identificar al usuario");
+        }
+
+        var userId = Guid.Parse(userIdStr);
+
+        // Crear la visita
         var visita = new HistoriaClinicaVisita
         {
             Id = Guid.NewGuid(),
             PacienteId = req.pacienteId,
             SucursalId = sucursalId,
+            UsuarioId = userId, // ✅ Guardar quién creó
+            UsuarioNombre = userName ?? "Usuario", // ✅ Guardar nombre
             Estado = EstadoHistoria.Borrador,
-            Observaciones = req.observaciones
+            Observaciones = req.observaciones,
+            Fecha = DateTime.UtcNow
         };
 
         // Agudezas
@@ -152,13 +175,13 @@ public class HistoriasController : ControllerBase
                 Cyl = r.Cyl,
                 Eje = r.Eje,
                 Add = r.Add,
-                Dip = r.DIP,
+                Dip = r.Dip, // ✅ Corregir: era DIP, ahora Dip
                 AltOblea = r.AltOblea
             });
         }
 
         // Materiales
-        foreach (var m in req.materiales ?? Array.Empty<MaterialDto>())
+        foreach (var m in req.materiales ?? Array.Empty<MaterialCHDto>())
         {
             visita.Materiales.Add(new PrescripcionMaterial
             {
@@ -169,10 +192,23 @@ public class HistoriasController : ControllerBase
             });
         }
 
+        // ✅ NUEVO: Armazones
+        foreach (var armazon in req.armazones ?? Array.Empty<ArmazonDto>())
+        {
+            visita.Armazon.Add(new PrescripcionArmazon
+            {
+                Id = Guid.NewGuid(),
+                VisitaId = visita.Id,
+                ProductoId = armazon.productoId,
+                Observaciones = armazon.observaciones ?? ""
+            });
+        }
+
         // Lentes de contacto
         foreach (var lc in req.lentesContacto ?? Array.Empty<LcDto>())
         {
-            if (!Enum.TryParse<TipoLenteContacto>(lc.tipo, true, out var tipo)) tipo = TipoLenteContacto.Otro;
+            if (!Enum.TryParse<TipoLenteContacto>(lc.tipo, true, out var tipo))
+                tipo = TipoLenteContacto.Otro;
 
             visita.LentesContacto.Add(new PrescripcionLenteContacto
             {
@@ -191,51 +227,151 @@ public class HistoriasController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = visita.Id }, new { id = visita.Id });
     }
 
-    [HttpGet("{id:guid}")]
-    [Authorize]
-    public async Task<ActionResult<HistoriaDetalleDto>> GetById(Guid id)
+    // Método auxiliar para clamp
+    private static int Clamp(int value, int min, int max)
     {
-        var h = await _db.Visitas
-            .AsNoTracking()
-            .Include(x => x.Paciente)
-            .Include(x => x.Visitas.OrderByDescending(v => v.Fecha))
-                .ThenInclude(v => v.Pagos)
-            .Include(x => x.Visitas)
-                .ThenInclude(v => v.Agudezas)
-            .Include(x => x.Visitas)
-                .ThenInclude(v => v.Rx)
-            .Include(x => x.Visitas)
-                .ThenInclude(v => v.Materiales)
-                    .ThenInclude(m => m.Material)
-            .Include(x => x.Visitas)
-                .ThenInclude(v => v.LentesContacto)
-            .FirstOrDefaultAsync(x => x.Id == id);
+        return value < min ? min : value > max ? max : value;
+    }
 
-        if (h == null) return NotFound();
 
-        var last = h.Visitas.OrderByDescending(v => v.Fecha).FirstOrDefault();
-        if (last == null) return NotFound("Historia sin visitas.");
 
-        var dto = new HistoriaDetalleDto(
-            Id: h.Id,
-            Fecha: last.Fecha,
-            Paciente: h.Paciente.Nombre,
-            Telefono: h.Paciente.Telefono,
-            Observaciones: last.Observaciones,
-            Estado: last.Estado.ToString(),
-            AV: last.Agudezas.Select(a => new AgudezaDto(a.Condicion.ToString(), a.Ojo.ToString(), a.Denominador)),
-            RX: last.Rx.Select(r => new RxDto(r.Ojo.ToString(), r.Distancia.ToString(), r.Esf, r.Cyl, r.Eje, r.Add, r.Dip, r.AltOblea)),
-            Materiales: last.Materiales.Select(m => new MaterialSeleccionadoDto(m.MaterialId, m.Material.Descripcion, m.Material.Marca, m.Observaciones)),
-            LentesContacto: last.LentesContacto.Select(l => new LenteContactoDto(l.Tipo.ToString(), l.Marca, l.Modelo, l.Observaciones)),
-            Pagos: last.Pagos.OrderBy(p => p.Fecha).Select(p => new PagoDto(p.Id, p.Metodo.ToString(), p.Monto, p.Autorizacion, p.Nota, p.Fecha)),
-            Total: last.Total,
-            ACuenta: last.ACuenta,
-            Resta: last.Resta,
-            FechaEnvioLaboratorio: last.FechaEnvioLaboratorio,
-            FechaEstimadaEntrega: last.FechaEstimadaEntrega
-        );
+    [HttpGet("{id}")]
+    public async Task<ActionResult<VisitaCompletaDto>> GetById(Guid id)
+    {
+        var visita = await _db.Visitas
+            .Include(v => v.Agudezas)
+            .Include(v => v.Rx)
+            .Include(v => v.Materiales)
+                .ThenInclude(m => m.Material)
+            .Include(v => v.Armazon)
+                .ThenInclude(a => a.Producto)
+            .Include(v => v.LentesContacto)
+            .Include(v => v.Paciente)
+            .Include(v => v.Sucursal) // ✅ INCLUIR SUCURSAL
+            .FirstOrDefaultAsync(v => v.Id == id);
 
-        return Ok(dto);
+        if (visita == null)
+            return NotFound();
+
+        var visitaDto = new VisitaCompletaDto
+        {
+            Id = visita.Id,
+            PacienteId = visita.PacienteId,
+            SucursalId = visita.SucursalId,
+            NombreSucursal = visita.Sucursal.Nombre, // ✅ USAR EL NOMBRE DIRECTAMENTE
+            UsuarioId = visita.UsuarioId,
+            UsuarioNombre = visita.UsuarioNombre,
+            Fecha = visita.Fecha,
+            Estado = visita.Estado.ToString(),
+            Total = visita.Total,
+            ACuenta = visita.ACuenta,
+            Resta = visita.Resta,
+            FechaEnvioLaboratorio = visita.FechaEnvioLaboratorio,
+            FechaEstimadaEntrega = visita.FechaEstimadaEntrega,
+            FechaRecibidoSucursal = visita.FechaRecibidoSucursal,
+            FechaEntregaCliente = visita.FechaEntregaCliente,
+            Observaciones = visita.Observaciones,
+
+            // Paciente
+            Paciente = new PacienteDto
+            {
+                Id = visita.Paciente.Id,
+                Nombre = visita.Paciente.Nombre,
+                Edad = visita.Paciente.Edad,
+                Telefono = visita.Paciente.Telefono,
+                Ocupacion = visita.Paciente.Ocupacion,
+                Direccion = visita.Paciente.Direccion
+            },
+
+            // Agudezas
+            Agudezas = visita.Agudezas.Select(a => new AgudezaVisualDto
+            {
+                Id = a.Id,
+                Condicion = a.Condicion.ToString(),
+                Ojo = a.Ojo.ToString(),
+                Denominador = a.Denominador
+            }).ToList(),
+
+            // RX
+            Rx = visita.Rx.Select(r => new RxMedicionDto
+            {
+                Id = r.Id,
+                Ojo = r.Ojo.ToString(),
+                Distancia = r.Distancia.ToString(),
+                Esf = r.Esf,
+                Cyl = r.Cyl,
+                Eje = r.Eje,
+                Add = r.Add,
+                Dip = r.Dip,
+                AltOblea = r.AltOblea
+            }).ToList(),
+
+            // Materiales
+            Materiales = visita.Materiales.Select(m => new PrescripcionMaterialDto
+            {
+                Id = m.Id,
+                MaterialId = m.MaterialId,
+                Observaciones = m.Observaciones,
+                Material = new MaterialDto
+                {
+                    Id = m.Material.Id,
+                    Descripcion = m.Material.Descripcion,
+                    Marca = m.Material.Marca
+                }
+            }).ToList(),
+
+            // Armazones
+            Armazones = visita.Armazon.Select(a => new PrescripcionArmazonDto
+            {
+                Id = a.Id,
+                ProductoId = a.ProductoId,
+                Observaciones = a.Observaciones,
+                Producto = new ProductoDto
+                {
+                    Id = a.Producto.Id,
+                    Sku = a.Producto.Sku,
+                    Nombre = a.Producto.Nombre,
+                    Categoria = a.Producto.Categoria.ToString()
+                }
+            }).ToList(),
+
+            // Lentes de contacto
+            LentesContacto = visita.LentesContacto.Select(lc => new PrescripcionLenteContactoDto
+            {
+                Id = lc.Id,
+                Tipo = lc.Tipo.ToString(),
+                Marca = lc.Marca,
+                Modelo = lc.Modelo,
+                Observaciones = lc.Observaciones
+            }).ToList()
+        };
+
+        return visitaDto;
+    }
+
+    // Endpoint para obtener últimas visitas (simplificado)
+    [HttpGet("paciente/{pacienteId}")]
+    public async Task<ActionResult<List<UltimaHistoriaItem>>> GetByPaciente(Guid pacienteId)
+    {
+        var visitas = await _db.Visitas
+            .Where(v => v.PacienteId == pacienteId)
+            .Include(v => v.Sucursal) // ✅ INCLUIR SUCURSAL
+            .OrderByDescending(v => v.Fecha)
+            .Take(10)
+            .Select(v => new UltimaHistoriaItem
+            {
+                Id = v.Id,
+                Fecha = v.Fecha,
+                Estado = v.Estado.ToString(),
+                Total = v.Total,
+                ACuenta = v.ACuenta,
+                Resta = v.Resta,
+                NombreSucursal = v.Sucursal != null ? v.Sucursal.Nombre : "Sucursal no disponible", 
+                UsuarioNombre = v.UsuarioNombre
+            })
+            .ToListAsync();
+
+        return visitas;
     }
 
     [HttpGet("ultimas/{pacienteId:guid}")]

@@ -16,6 +16,10 @@ namespace Optica.Domain.Entities
         public Paciente Paciente { get; set; } = default!;
 
         public Guid SucursalId { get; set; }
+        public Sucursal Sucursal { get; set; } = default!;
+        public Guid UsuarioId { get; set; } // ✅ NUEVO: Quién creó la visita
+        public string UsuarioNombre { get; set; } = default!; // ✅ NUEVO: Nombre del usuario
+
         public DateTime Fecha { get; set; } = DateTime.UtcNow;
         public EstadoHistoria Estado { get; set; } = EstadoHistoria.Borrador;
 
@@ -35,6 +39,7 @@ namespace Optica.Domain.Entities
         public ICollection<AgudezaVisual> Agudezas { get; set; } = new List<AgudezaVisual>();
         public ICollection<RxMedicion> Rx { get; set; } = new List<RxMedicion>();
         public ICollection<PrescripcionMaterial> Materiales { get; set; } = new List<PrescripcionMaterial>();
+        public ICollection<PrescripcionArmazon> Armazon { get; set; } = new List<PrescripcionArmazon>();
         public ICollection<PrescripcionLenteContacto> LentesContacto { get; set; } = new List<PrescripcionLenteContacto>();
         public ICollection<HistoriaPago> Pagos { get; set; } = new List<HistoriaPago>();
         public ICollection<HistoriaClinicaVisita> Visitas { get; set; } = new List<HistoriaClinicaVisita>();

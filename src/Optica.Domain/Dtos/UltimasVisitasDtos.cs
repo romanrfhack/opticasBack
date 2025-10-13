@@ -20,19 +20,11 @@ namespace Optica.Domain.Dtos
         public List<RxMedicionDto> Rx { get; set; } = new();
     }
 
-    public sealed class PagoMiniDto
+    public class RxMedicionDto
     {
-        public DateTime Fecha { get; set; }
-        public decimal Monto { get; set; }
-        public string Metodo { get; set; } = default!;
-        public string? Autorizacion { get; set; }
-        public string? Nota { get; set; }
-    }
-
-    public sealed class RxMedicionDto
-    {
-        public string Ojo { get; set; } = default!;        // "OD" | "OI"
-        public string Distancia { get; set; } = default!;  // "Lejos" | "Cerca" (o como tengas el enum)
+        public Guid Id { get; set; }
+        public string Ojo { get; set; } = string.Empty;
+        public string Distancia { get; set; } = string.Empty;
         public decimal? Esf { get; set; }
         public decimal? Cyl { get; set; }
         public int? Eje { get; set; }
@@ -41,6 +33,14 @@ namespace Optica.Domain.Dtos
         public decimal? AltOblea { get; set; }
     }
 
+    public sealed class PagoMiniDto
+    {
+        public DateTime Fecha { get; set; }
+        public decimal Monto { get; set; }
+        public string Metodo { get; set; } = default!;
+        public string? Autorizacion { get; set; }
+        public string? Nota { get; set; }
+    }
 
     public sealed class VisitaDetalleDto
     {

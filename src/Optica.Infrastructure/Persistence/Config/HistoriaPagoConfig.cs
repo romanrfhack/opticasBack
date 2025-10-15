@@ -20,9 +20,8 @@ namespace Optica.Infrastructure.Persistence.Config
                 .WithMany(v => v.Pagos)
                 .HasForeignKey(x => x.VisitaId);
 
-            // 🔹 Monto en 12,2
+            b.Property(x => x.Id).ValueGeneratedOnAdd();
             b.Property(x => x.Monto).HasPrecision(12, 2);
-
             b.Property(x => x.Autorizacion).HasMaxLength(60);
             b.Property(x => x.Nota).HasMaxLength(300);
 

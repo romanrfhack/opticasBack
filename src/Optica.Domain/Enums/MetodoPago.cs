@@ -9,7 +9,8 @@ namespace Optica.Domain.Enums
     public enum MetodoPago
     {
         Efectivo = 0,
-        Tarjeta = 1
+        Tarjeta = 1,
+        Transferencia = 2   
     }
 
     public enum RxDistancia

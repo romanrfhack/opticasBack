@@ -556,27 +556,33 @@ public class HistoriasController : ControllerBase
             .ToListAsync();
 
     [HttpPost("{id:guid}/pagos")]
-    public async Task<IActionResult> AgregarPago(Guid id, PagoDto pago)
+    public async Task<IActionResult> AgregarPagos(Guid id, PagoDto[] pagos)
     {
-        var v = await _db.Visitas.Include(h => h.Pagos).FirstOrDefaultAsync(h => h.Id == id);
-        if (v is null) return NotFound();
+        var visita = await _db.Visitas
+            .Include(v => v.Pagos)
+            .FirstOrDefaultAsync(v => v.Id == id);
 
-        if (!Enum.TryParse<MetodoPago>(pago.Metodo, true, out var metodo))
-            return BadRequest(new { message = "Método inválido" });
+        if (visita is null) return NotFound();
 
-        v.Pagos.Add(new HistoriaPago
+        foreach (var pago in pagos)
         {
-            Id = Guid.NewGuid(),
-            VisitaId = v.Id,
-            Metodo = metodo,
-            Monto = pago.Monto,
-            Autorizacion = pago.Autorizacion,
-            Nota = pago.Nota
-        });
+            if (!Enum.TryParse<MetodoPago>(pago.Metodo, true, out var metodo))
+                return BadRequest(new { message = $"Método inválido en pago: {pago.Metodo}" });
 
-        var sum = v.Pagos.Sum(x => x.Monto);
-        v.ACuenta = sum;
-        v.Resta = (v.Total ?? 0) - sum;
+            visita.Pagos.Add(new HistoriaPago
+            {
+                VisitaId = id,
+                Metodo = metodo,
+                Monto = pago.Monto,
+                Autorizacion = pago.Autorizacion,
+                Nota = pago.Nota
+            });
+        }
+
+        // Recalcular totales
+        var sumaTotal = visita.Pagos.Sum(p => p.Monto);
+        visita.ACuenta = sumaTotal;
+        visita.Resta = (visita.Total ?? 0) - sumaTotal;
 
         await _db.SaveChangesAsync();
         return NoContent();

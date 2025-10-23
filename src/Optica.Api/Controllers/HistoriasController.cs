@@ -1,15 +1,18 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using Optica.Application.Visitas.Dtos;
 using Optica.Domain.Dtos;
 using Optica.Domain.Entities;
 using Optica.Domain.Enums;
 using Optica.Infrastructure.Persistence;
 
-using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
-using Optica.Application.Visitas.Dtos;
+using System.Linq;
+using System.Security.Claims;
+
 using static System.Math;
 
 namespace Optica.Api.Controllers;
@@ -53,7 +56,8 @@ public class HistoriasController : ControllerBase
         RxDto[] rx,
         MaterialCHDto[] materiales,
         LcDto[] lentesContacto,
-        ArmazonDto[] armazones
+        ArmazonDto[] armazones, 
+        decimal total
     );
 
     //DTOS
@@ -138,7 +142,7 @@ public class HistoriasController : ControllerBase
             SucursalId = sucursalId,
             UsuarioId = userId, // ✅ Guardar quién creó
             UsuarioNombre = userName ?? "Usuario", // ✅ Guardar nombre
-            Estado = EstadoHistoria.Borrador,
+            Estado = EstadoHistoria.Creada,
             Observaciones = req.observaciones,
             Fecha = DateTime.UtcNow
         };
@@ -220,6 +224,8 @@ public class HistoriasController : ControllerBase
                 Observaciones = lc.observaciones
             });
         }
+
+        visita.Total = req.total;
 
         _db.Visitas.Add(visita);
         await _db.SaveChangesAsync();
@@ -510,44 +516,6 @@ public class HistoriasController : ControllerBase
 
     public sealed record EnviarLabRequest(decimal total, PagoDto[]? pagos, DateTime? fechaEstimadaEntrega);
 
-    //[HttpPost("{id:guid}/enviar-lab")]
-    //public async Task<IActionResult> EnviarALaboratorio(Guid id, EnviarLabRequest req)
-    //{
-    //    var v = await _db.Visitas.Include(h => h.Pagos).FirstOrDefaultAsync(h => h.Id == id);
-    //    if (v is null) return NotFound();
-
-    //    v.Estado = EstadoHistoria.EnLaboratorio;
-    //    v.Total = req.total;
-    //    v.FechaEnvioLaboratorio = DateTime.UtcNow;
-    //    v.FechaEstimadaEntrega = req.fechaEstimadaEntrega;
-
-    //    if (req.pagos is { Length: > 0 })
-    //    {
-    //        foreach (var p in req.pagos)
-    //        {
-    //            if (!Enum.TryParse<MetodoPago>(p.Metodo, true, out var metodo)) continue;
-
-    //            v.Pagos.Add(new HistoriaPago
-    //            {
-    //                Id = Guid.NewGuid(),
-    //                VisitaId = v.Id,
-    //                Metodo = metodo,
-    //                Monto = p.Monto,
-    //                Autorizacion = p.Autorizacion,
-    //                Nota = p.Nota
-    //            });
-    //        }
-    //    }
-
-    //    var sum = v.Pagos.Sum(x => x.Monto);
-    //    v.ACuenta = sum;
-    //    v.Resta = (v.Total ?? 0) - sum;
-
-    //    await _db.SaveChangesAsync();
-    //    // TODO: movimientos de inventario aquí
-    //    return NoContent();
-    //}
-
     [HttpGet("{id:guid}/pagos")]
     public async Task<IEnumerable<object>> ListarPagos(Guid id)
         => await _db.HistoriaPagos.Where(p => p.VisitaId == id)
@@ -591,7 +559,7 @@ public class HistoriasController : ControllerBase
     [HttpGet("en-laboratorio")]
     public async Task<IEnumerable<object>> EnLaboratorio([FromQuery] int take = 100)
         => await _db.Visitas
-            .Where(h => h.Estado == EstadoHistoria.EnLaboratorio)
+            .Where(h => h.Estado == EstadoHistoria.EnviadaALaboratorio)
             .Select(h => new {
                 h.Id,
                 h.FechaEnvioLaboratorio,
@@ -645,7 +613,7 @@ public class HistoriasController : ControllerBase
 
         last.ACuenta = acumulado;
         last.Resta = (last.Total ?? 0) - (last.ACuenta ?? 0);
-        last.Estado = Optica.Domain.Enums.EstadoHistoria.EnLaboratorio;
+        last.Estado = Optica.Domain.Enums.EstadoHistoria.RecibidaEnSucursal;
         last.FechaEnvioLaboratorio = DateTime.UtcNow;
         last.FechaEstimadaEntrega = body.FechaEstimadaEntrega;
 
@@ -653,5 +621,195 @@ public class HistoriasController : ControllerBase
         return NoContent();
     }
 
+
+    [HttpGet("visitas-costos")]
+    public async Task<ActionResult<PagedResult<VisitaCostoRowDto>>> GetVisitasCostos(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null,          // opcional: buscar por nombre de paciente
+        [FromQuery] int estado = -1           // opcional: filtrar por estado
+    )
+    {
+        var sucursalIdClaim = User.FindFirst("sucursalId")?.Value;
+        if (string.IsNullOrWhiteSpace(sucursalIdClaim))
+            return Forbid();
+
+        var sucursalId = Guid.Parse(sucursalIdClaim);
+
+        var q = _db.Visitas
+            .AsNoTracking()
+            .Where(v => v.SucursalId == sucursalId);
+
+        //if (estado != -1)
+        //    q = q.Where(v => v.Estado. == estado); 
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            // Busca por nombre de paciente (asumiendo relación)
+            q = q.Where(v => (v.Paciente.Nombre).Contains(search));
+        }
+
+        var total = await q.CountAsync();
+
+        var rows = await q
+            .OrderByDescending(v => v.Fecha)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(v => new VisitaCostoRowDto(
+                v.Id,
+                v.Fecha,
+                v.Paciente.Nombre,
+                v.UsuarioNombre,
+                (int)v.Estado,
+                v.Total,
+                v.ACuenta,
+                v.Resta
+            ))
+            .ToListAsync();
+
+        return Ok(new PagedResult<VisitaCostoRowDto>(rows, page, pageSize, total));
+    }
+
+
+    [HttpPost("{id:guid}/status")]
+    public async Task<ActionResult<ChangeVisitaStatusResponse>> ChangeStatus(Guid id, [FromBody] ChangeVisitaStatusRequest body)
+    {
+        var sucursalId = Guid.Parse(User.FindFirst("sucursalId")!.Value);
+
+        string? GetClaim(params string[] types)
+            => types.Select(t => User.FindFirst(t)?.Value)
+                .FirstOrDefault(v => !string.IsNullOrEmpty(v));
+
+        var usuarioId = GetClaim(JwtRegisteredClaimNames.Sub, ClaimTypes.NameIdentifier, "sub");
+        var usuarioNom = GetClaim("name", ClaimTypes.Name, JwtRegisteredClaimNames.UniqueName) ?? User.Identity?.Name;
+
+        var visita = await _db.Visitas.FirstOrDefaultAsync(v => v.Id == id && v.SucursalId == sucursalId);
+        if (visita is null) return NotFound("Visita no encontrada en tu sucursal.");
+
+        var fromStatus = visita.Estado;
+        var toStatusValue = body.ToStatus;
+
+        // 1) Validar que el número corresponde a un estado válido
+        if (!Enum.IsDefined(typeof(EstadoHistoria), toStatusValue))
+            return BadRequest($"Estado inválido: {toStatusValue}. Estados válidos: 0-{Enum.GetValues<EstadoHistoria>().Length - 1}");
+
+        var nuevoEstado = (EstadoHistoria)toStatusValue;
+
+        // 2) Validar que es el siguiente estado en secuencia
+        if ((int)nuevoEstado != (int)fromStatus + 1)
+            return BadRequest($"Solo se permite avanzar al estado siguiente. Estado actual: {(int)fromStatus}, próximo esperado: {(int)fromStatus + 1}");
+
+        // 3) Validaciones específicas por estado
+        if (nuevoEstado == EstadoHistoria.EnviadaALaboratorio)
+        {
+            if (string.IsNullOrWhiteSpace(body.LabTipo))
+                return BadRequest("LabTipo es requerido para 'Enviada a laboratorio'.");
+            if (body.LabTipo is not ("Interno" or "Externo"))
+                return BadRequest("LabTipo debe ser 'Interno' o 'Externo'.");
+        }
+
+        // 4) Persistencia atómica
+        using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            // Actualizar estado
+            visita.Estado = nuevoEstado;
+
+            // Actualizar fechas según el estado
+            UpdateFechasPorEstado(visita, nuevoEstado);
+
+            // Insertar en historial
+            Debug.Assert(usuarioId != null, nameof(usuarioId) + " != null");
+            Debug.Assert(usuarioNom != null, nameof(usuarioNom) + " != null");
+            var entry = new VisitaStatusHistory
+            {
+                VisitaId = visita.Id,
+                FromStatus = fromStatus.ToString(),
+                ToStatus = nuevoEstado.ToString(),
+                UsuarioId = Guid.Parse(usuarioId),
+                UsuarioNombre = usuarioNom,
+                SucursalId = sucursalId,
+                TimestampUtc = DateTimeOffset.UtcNow,
+                Observaciones = body.Observaciones,
+                LabTipo = nuevoEstado == EstadoHistoria.EnviadaALaboratorio ? body.LabTipo : null,
+                LabId = nuevoEstado == EstadoHistoria.EnviadaALaboratorio ? body.LabId : null,
+                LabNombre = nuevoEstado == EstadoHistoria.EnviadaALaboratorio ? body.LabNombre : null
+            };
+
+            _db.VisitaStatusHistory.Add(entry);
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            return Ok(new ChangeVisitaStatusResponse(
+                visita.Id,
+                fromStatus.ToString(),
+                nuevoEstado.ToString(),
+                entry.TimestampUtc
+            ));
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            // Log: _logger.LogError(ex, "Error al cambiar estado de visita {VisitaId}", id);
+            return StatusCode(500, "Error interno al actualizar el estado");
+        }
+    }
+
+    // Método auxiliar para actualizar fechas
+    private void UpdateFechasPorEstado(HistoriaClinicaVisita visita, EstadoHistoria nuevoEstado)
+    {
+        switch (nuevoEstado)
+        {
+            case EstadoHistoria.EnviadaALaboratorio:
+                visita.FechaEnvioLaboratorio ??= DateTime.UtcNow;
+                break;
+            case EstadoHistoria.ListaEnLaboratorio:
+                visita.FechaEstimadaEntrega ??= DateTime.UtcNow.AddDays(3);
+                break;
+            case EstadoHistoria.RecibidaEnSucursal:
+                visita.FechaRecibidoSucursal ??= DateTime.UtcNow;
+                break;
+            case EstadoHistoria.EntregadaAlCliente:
+                visita.FechaEntregaCliente ??= DateTime.UtcNow;
+                break;
+        }
+    }
+
+    [HttpGet("{id:guid}/status-history")]
+    public async Task<ActionResult<IEnumerable<VisitaStatusHistory>>> GetHistory(Guid id)
+    {
+            var sucursalId = Guid.Parse(User.FindFirst("sucursalId")!.Value);
+
+            // valida pertenencia
+            var pertenece = await _db.Visitas.AnyAsync(v => v.Id == id && v.SucursalId == sucursalId);
+            if (!pertenece) return NotFound();
+
+            var hist = await _db.VisitaStatusHistory
+                .Where(h => h.VisitaId == id)
+                .OrderByDescending(h => h.TimestampUtc)
+                .ToListAsync();
+
+            return Ok(hist);
+        }
+
+        private static readonly Dictionary<string, string[]> Allowed = new()
+        {
+            ["Creada"] = new[] { "Registrada", "Cancelada" },
+            ["Registrada"] = new[] { "Enviada a laboratorio", "Cancelada" },
+            ["Enviada a laboratorio"] = new[] { "Lista en laboratorio" },
+            ["Lista en laboratorio"] = new[] { "Recibida en sucursal central", "Recibida en sucursal origen" },
+            ["Recibida en sucursal central"] = new[] { "Lista para entrega" },
+            ["Recibida en sucursal origen"] = new[] { "Lista para entrega" },
+            ["Lista para entrega"] = new[] { "Entregada al cliente" },
+            ["Entregada al cliente"] = Array.Empty<string>(),
+            ["Cancelada"] = Array.Empty<string>()
+        };
+
+        private static bool IsAllowedTransition(string from, string? to)
+            => to is not null && Allowed.TryGetValue(from, out var next) && next.Contains(to);
+    
+
+
+    public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount);
 
 }

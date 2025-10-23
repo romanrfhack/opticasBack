@@ -11,6 +11,7 @@ public static class Policies
     public const string Ordenes_Crear = "Ordenes.Crear";
     public const string Ordenes_Editar = "Ordenes.Editar";
     public const string Usuarios_Admin = "Usuarios.Admin";
+    public const string SucursalEncargadoOnly = "SucursalEncargadoOnly";
 
     public static void Add(AuthorizationOptions options)
     {
@@ -21,5 +22,11 @@ public static class Policies
         options.AddPolicy(Ordenes_Crear, p => p.RequireRole("Admin", "Vendedor", "Optometrista"));
         options.AddPolicy(Ordenes_Editar, p => p.RequireRole("Admin", "Vendedor", "Optometrista"));
         options.AddPolicy(Usuarios_Admin, p => p.RequireRole("Admin"));
+        options.AddPolicy(SucursalEncargadoOnly, policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireRole("EncargadoSucursal");
+            policy.RequireClaim("sucursalId"); 
+        });
     }
 }

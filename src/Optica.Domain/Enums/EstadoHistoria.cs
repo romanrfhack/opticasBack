@@ -8,12 +8,16 @@ namespace Optica.Domain.Enums
 {
     public enum EstadoHistoria
     {
-        Borrador = 0,
-        Guardado = 1,
-        EnLaboratorio = 2,
-        EnSucursal = 3,
-        Entregado = 4,
-        Cerrado = 5
+        Creada = 0,
+        Registrada = 1,
+        EnTransitoASucursal = 2,
+        RecibidaEnSucursal = 3,
+        EnviadaALaboratorio = 4,
+        ListaEnLaboratorio = 5,
+        RecibidaEnSucursalCentral = 6,
+        ListaParaEntrega = 7,
+        RecibidaEnSucursalOrigen = 8,
+        EntregadaAlCliente = 9
     }
 
     public enum Ojo { OD = 0, OI = 1 }

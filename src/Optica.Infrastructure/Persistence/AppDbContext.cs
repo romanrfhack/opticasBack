@@ -3,10 +3,10 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 using Optica.Domain.Entities;
-using Optica.Domain.Enums;
 using Optica.Infrastructure.Identity;
 
 namespace Optica.Infrastructure.Persistence;
+
 public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
@@ -25,11 +25,14 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
     public DbSet<HistoriaPago> HistoriaPagos => Set<HistoriaPago>();
     public DbSet<HistoriaClinicaVisita> Visitas => Set<HistoriaClinicaVisita>();
     public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
+    public DbSet<VisitaStatusHistory> VisitaStatusHistory => Set<VisitaStatusHistory>();
 
+    // CREATE INDEX IX_Visitas_SucursalId_Fecha ON dbo.Visitas(SucursalId, Fecha DESC);
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
 
+        // ---------- Sucursal ----------
         b.Entity<Sucursal>(cfg =>
         {
             cfg.ToTable("Sucursales");
@@ -37,6 +40,7 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
             cfg.Property(x => x.Nombre).HasMaxLength(120).IsRequired();
         });
 
+        // ---------- Producto ----------
         b.Entity<Producto>(cfg =>
         {
             cfg.ToTable("Productos");
@@ -47,15 +51,24 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
             cfg.HasIndex(x => x.Sku).IsUnique();
         });
 
+        // ---------- Inventario ----------
         b.Entity<Inventario>(cfg =>
         {
             cfg.ToTable("Inventarios");
             cfg.HasKey(x => x.Id);
             cfg.HasIndex(x => new { x.ProductoId, x.SucursalId }).IsUnique();
-            cfg.HasOne(x => x.Producto).WithMany(p => p.Inventarios).HasForeignKey(x => x.ProductoId);
-            cfg.HasOne(x => x.Sucursal).WithMany().HasForeignKey(x => x.SucursalId);
+            cfg.HasOne(x => x.Producto)
+               .WithMany(p => p.Inventarios)
+               .HasForeignKey(x => x.ProductoId)
+               .OnDelete(DeleteBehavior.Restrict);
+
+            cfg.HasOne(x => x.Sucursal)
+               .WithMany()
+               .HasForeignKey(x => x.SucursalId)
+               .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // ---------- InventarioMovimiento ----------
         b.Entity<InventarioMovimiento>(cfg =>
         {
             cfg.ToTable("InventarioMovimientos");
@@ -63,7 +76,10 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
             cfg.Property(x => x.Tipo).HasConversion<byte>();
             cfg.Property(x => x.Cantidad).IsRequired();
             cfg.Property(x => x.Motivo).HasMaxLength(300);
-            cfg.HasOne(x => x.Producto).WithMany().HasForeignKey(x => x.ProductoId);
+            cfg.HasOne(x => x.Producto)
+               .WithMany()
+               .HasForeignKey(x => x.ProductoId)
+               .OnDelete(DeleteBehavior.Restrict);
             cfg.HasIndex(x => x.Fecha);
         });
 
@@ -86,12 +102,12 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
             cfg.ToTable("Pacientes");
             cfg.HasKey(x => x.Id);
 
-            // Relación con Sucursal
+            // Relación con Sucursal (sin cascada)
             cfg.HasOne(p => p.SucursalAlta)
-                .WithMany()
-                .HasForeignKey(p => p.SucursalIdAlta);
+               .WithMany()
+               .HasForeignKey(p => p.SucursalIdAlta)
+               .OnDelete(DeleteBehavior.Restrict);
 
-            // Propiedades principales
             cfg.Property(x => x.Nombre).HasMaxLength(200).IsRequired();
             cfg.Property(x => x.Telefono).HasMaxLength(30);
             cfg.Property(x => x.Ocupacion).HasMaxLength(120);
@@ -106,7 +122,7 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
             cfg.Property(x => x.FechaRegistro)
                 .HasDefaultValueSql("GETUTCDATE()");
 
-            // Columnas normalizadas persistidas
+            // Columnas normalizadas
             cfg.Property(x => x.NombreNormalized)
                 .HasMaxLength(200)
                 .HasComputedColumnSql("UPPER(LTRIM(RTRIM([Nombre])))", stored: true);
@@ -115,12 +131,56 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
                 .HasMaxLength(30)
                 .HasComputedColumnSql("LTRIM(RTRIM([Telefono]))", stored: true);
 
-            // Índice único por nombre + teléfono normalizados
+            // Índice único por nombre + teléfono
             cfg.HasIndex(x => new { x.NombreNormalized, x.TelefonoNormalized })
                 .IsUnique()
                 .HasFilter("[Nombre] IS NOT NULL AND [Telefono] IS NOT NULL AND [Telefono] <> ''");
         });
 
+        // ---------- HistoriaClinicaVisita (Visitas) ----------
+        b.Entity<HistoriaClinicaVisita>(cfg =>
+        {
+            cfg.ToTable("Visitas");
+            cfg.HasKey(x => x.Id);
+
+            // Relación con Sucursal (sin cascada)
+            cfg.HasOne(v => v.Sucursal)
+               .WithMany()
+               .HasForeignKey(v => v.SucursalId)
+               .OnDelete(DeleteBehavior.Restrict);
+
+            // Relación con Paciente (sin cascada)
+            cfg.HasOne(v => v.Paciente)
+               .WithMany(p => p.Visitas)
+               .HasForeignKey(v => v.PacienteId)
+               .OnDelete(DeleteBehavior.Restrict);
+
+            // Si tienes relación con Usuario (quien atendió), también sin cascada
+            // cfg.HasOne(v => v.Usuario)
+            //    .WithMany()
+            //    .HasForeignKey(v => v.UsuarioId)
+            //    .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ---------- VisitaStatusHistory ----------
+        b.Entity<VisitaStatusHistory>(e =>
+        {
+            e.ToTable("VisitaStatusHistory");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.FromStatus).HasMaxLength(80).IsRequired();
+            e.Property(x => x.ToStatus).HasMaxLength(80).IsRequired();
+            e.Property(x => x.UsuarioNombre).HasMaxLength(150).IsRequired();
+            e.Property(x => x.Observaciones).HasMaxLength(1000);
+            e.Property(x => x.LabTipo).HasMaxLength(20);
+            e.Property(x => x.LabNombre).HasMaxLength(150);
+            e.HasIndex(x => new { x.VisitaId, x.TimestampUtc });
+
+            //// Relación con Visita (sí puede tener cascada)
+            //e.HasOne(h => h.Visita)
+            // .WithMany(v => v.StatusHistory)
+            // .HasForeignKey(h => h.VisitaId)
+            // .OnDelete(DeleteBehavior.Cascade);
+        });
 
         b.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }

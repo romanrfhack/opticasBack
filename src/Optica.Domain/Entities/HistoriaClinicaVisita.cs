@@ -17,11 +17,11 @@ namespace Optica.Domain.Entities
 
         public Guid SucursalId { get; set; }
         public Sucursal Sucursal { get; set; } = default!;
-        public Guid UsuarioId { get; set; } // ✅ NUEVO: Quién creó la visita
-        public string UsuarioNombre { get; set; } = default!; // ✅ NUEVO: Nombre del usuario
+        public Guid UsuarioId { get; set; } 
+        public string UsuarioNombre { get; set; } = default!; 
 
         public DateTime Fecha { get; set; } = DateTime.UtcNow;
-        public EstadoHistoria Estado { get; set; } = EstadoHistoria.Borrador;
+        public EstadoHistoria Estado { get; set; } = EstadoHistoria.Creada;
 
         // Totales
         public decimal? Total { get; set; }

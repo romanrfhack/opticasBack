@@ -63,8 +63,6 @@ public class PacientesController : ControllerBase
         var userEmail = GetClaim(JwtRegisteredClaimNames.Email, ClaimTypes.Email, "email");
         var userName = GetClaim("name", ClaimTypes.Name, JwtRegisteredClaimNames.UniqueName) ?? User.Identity?.Name;
 
-
-        // Validación rápida (además del índice único en BD)
         var nombreNorm = (req.Nombre ?? string.Empty).Trim().ToUpper();
         var telNorm = (req.Telefono ?? string.Empty).Trim();
 
@@ -154,7 +152,7 @@ public class PacientesController : ControllerBase
 
                 TieneOrdenPendiente =
                     p.Visitas.OrderByDescending(v => v.Fecha)
-                        .Select(v => v.Estado == EstadoHistoria.EnLaboratorio ||
+                        .Select(v => v.Estado <= EstadoHistoria.RecibidaEnSucursalOrigen ||
                                      ((v.Total ?? 0m) - (v.Pagos.Sum(pg => (decimal?)pg.Monto) ?? 0m)) > 0m)
                         .FirstOrDefault()
             })
@@ -201,7 +199,7 @@ public class PacientesController : ControllerBase
 
                 TieneOrdenPendiente =
                     p.Visitas.OrderByDescending(v => v.Fecha)
-                        .Select(v => v.Estado == EstadoHistoria.EnLaboratorio ||
+                        .Select(v => v.Estado <= EstadoHistoria.RecibidaEnSucursalOrigen ||
                                      ((v.Total ?? 0m) - (v.Pagos.Sum(pg => (decimal?)pg.Monto) ?? 0m)) > 0m)
                         .FirstOrDefault()
             })
@@ -250,7 +248,7 @@ public class PacientesController : ControllerBase
 
                 TieneOrdenPendiente =
                     p.Visitas.OrderByDescending(v => v.Fecha)
-                        .Select(v => v.Estado == EstadoHistoria.EnLaboratorio ||
+                        .Select(v => v.Estado <= EstadoHistoria.RecibidaEnSucursalOrigen ||
                                      ((v.Total ?? 0m) - (v.Pagos.Sum(pg => (decimal?)pg.Monto) ?? 0m)) > 0m)
                         .FirstOrDefault()
             })
@@ -291,7 +289,7 @@ public class PacientesController : ControllerBase
         if (soloPendientes)
         {
             q = q.Where(v =>
-                v.Estado == EstadoHistoria.EnLaboratorio ||
+                v.Estado <= EstadoHistoria.RecibidaEnSucursalOrigen ||
                 ((v.Total ?? 0m) - (v.Pagos.Sum(p => (decimal?)p.Monto) ?? 0m)) > 0m
             );
         }

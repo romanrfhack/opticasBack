@@ -597,6 +597,14 @@ public class HistoriasController : ControllerBase
                 .AsNoTracking();
         }
 
+        //userRole = "Mensajero"
+        if (userRole == "Mensajero")
+        {
+            q = _db.Visitas
+                .AsNoTracking()
+                .Where(v => v.Estado == EstadoHistoria.ListaParaEnvio);
+        }
+
         // Filtro por estado (si lo habilitas)
         // if (estado != -1)
         //     q = q.Where(v => (int)v.Estado == estado);
@@ -621,6 +629,7 @@ public class HistoriasController : ControllerBase
                 v.Total,
                 v.ACuenta,
                 v.Resta,
+                v.Sucursal.Nombre,
                 // NUEVO: último TimestampUtc en VisitaStatusHistory para esta visita
                 _db.VisitaStatusHistory
                     .Where(h => h.VisitaId == v.Id)

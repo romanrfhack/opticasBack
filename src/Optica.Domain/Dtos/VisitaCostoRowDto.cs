@@ -15,6 +15,7 @@ namespace Optica.Domain.Dtos
         decimal? Total,
         decimal? ACuenta,
         decimal? Resta,
+        string sucursal,
         DateTimeOffset? FechaUltimaActualizacion // <-- NUEVO
     );
 

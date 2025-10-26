@@ -10,14 +10,15 @@ namespace Optica.Domain.Enums
     {
         Creada = 0,
         Registrada = 1,
-        EnTransitoASucursal = 2,
-        RecibidaEnSucursal = 3,
-        EnviadaALaboratorio = 4,
-        ListaEnLaboratorio = 5,
-        RecibidaEnSucursalCentral = 6,
-        ListaParaEntrega = 7,
-        RecibidaEnSucursalOrigen = 8,
-        EntregadaAlCliente = 9
+        ListaParaEnvio = 2,
+        EnTransitoASucursal = 3,
+        RecibidaEnSucursal = 4,
+        EnviadaALaboratorio = 5,
+        ListaEnLaboratorio = 6,
+        RecibidaEnSucursalCentral = 7,
+        ListaParaEntrega = 8,
+        RecibidaEnSucursalOrigen = 9,
+        EntregadaAlCliente = 10
     }
 
     public enum Ojo { OD = 0, OI = 1 }

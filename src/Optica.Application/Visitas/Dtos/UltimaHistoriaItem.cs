@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Optica.Domain.Dtos;
+using Optica.Domain.Entities;
 
 namespace Optica.Application.Visitas.Dtos
 {
@@ -48,6 +49,7 @@ namespace Optica.Application.Visitas.Dtos
         public List<PrescripcionMaterialDto> Materiales { get; set; } = new();
         public List<PrescripcionArmazonDto> Armazones { get; set; } = new();
         public List<PrescripcionLenteContactoDto> LentesContacto { get; set; } = new();
+        public List<VisitaConceptoDto> Conceptos { get; set; } = new();
     }
 
     // DTO para paciente (solo datos básicos)
@@ -109,6 +111,16 @@ namespace Optica.Application.Visitas.Dtos
         public string Tipo { get; set; } = string.Empty;
         public string? Marca { get; set; }
         public string? Modelo { get; set; }
+        public string? Observaciones { get; set; }
+    }
+
+    public class VisitaConceptoDto
+    {
+        public Guid Id { get; set; }
+        public string Concepto { get; set; } = string.Empty;
+        public decimal Monto { get; set; }
+        public string UsuarioNombre { get; set; } = string.Empty;
+        public DateTimeOffset Fecha { get; set; }
         public string? Observaciones { get; set; }
     }
 }

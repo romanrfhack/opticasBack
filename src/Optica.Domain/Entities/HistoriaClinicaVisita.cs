@@ -43,6 +43,7 @@ namespace Optica.Domain.Entities
         public ICollection<PrescripcionLenteContacto> LentesContacto { get; set; } = new List<PrescripcionLenteContacto>();
         public ICollection<HistoriaPago> Pagos { get; set; } = new List<HistoriaPago>();
         public ICollection<HistoriaClinicaVisita> Visitas { get; set; } = new List<HistoriaClinicaVisita>();
+        public ICollection<VisitaConcepto> Conceptos { get; set; } = new List<VisitaConcepto>();
 
         // Vínculos opcionales a productos para inventario
         public Guid? ArmazonProductoId { get; set; }

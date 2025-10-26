@@ -1,5 +1,5 @@
-﻿using System.Diagnostics;
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,13 +7,12 @@ using Optica.Application.Visitas.Dtos;
 using Optica.Domain.Dtos;
 using Optica.Domain.Entities;
 using Optica.Domain.Enums;
+using Optica.Infrastructure.Identity;
 using Optica.Infrastructure.Persistence;
 
+using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using System.Security.Claims;
-
-using static System.Math;
 
 namespace Optica.Api.Controllers;
 
@@ -23,29 +22,13 @@ namespace Optica.Api.Controllers;
 public class HistoriasController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public HistoriasController(AppDbContext db) { _db = db; }
-
-    private Guid? GetUserSucursalId()
-    {
-        var val = User?.FindFirstValue("sucursalId");
-        return Guid.TryParse(val, out var g) ? g : null;
-    }
-
-    // DTOs
-    //public sealed record AgudezaDto(string condicion, string ojo, int denominador);
-
-    // ojo: "OD"/"OI", distancia: "Lejos"/"Cerca"
-    //public sealed record RxDto(string ojo, string distancia,
-    //    decimal? esf, decimal? cyl, int? eje, decimal? add,
-    //    string? dip, decimal? altOblea);
+    private readonly UserManager<AppUser> _userManager;
+    public HistoriasController(AppDbContext db, UserManager<AppUser> um) { _db = db; _userManager = um; }  
 
     public sealed record MaterialCHDto(Guid materialId, string? observaciones);
 
     // tipo: "Esferico" | "Torico" | "Otro"
     public sealed record LcDto(string tipo, string? marca, string? modelo, string? observaciones);
-
-    // metodo: "Efectivo" | "Tarjeta"
-    //public sealed record PagoDto(decimal monto, string metodo, string? autorizacion, string? nota);
 
     public sealed record ArmazonDto(Guid productoId, string? observaciones);
 
@@ -61,41 +44,7 @@ public class HistoriasController : ControllerBase
     );
 
     //DTOS
-    
-    public record UltimaHistoriaItemDto(Guid Id, DateTime Fecha, string Estado, decimal? Total, decimal? ACuenta, decimal? Resta);
-
-    public record HistoriaResumenDto(
-        Guid Id,
-        DateTime Fecha,
-        string Paciente,
-        string Telefono,
-        string Estado,
-        decimal? Total,
-        decimal? Resta,
-        DateTime? FechaEnvioLaboratorio,
-        DateTime? FechaEstimadaEntrega
-    );
-
     public record AgudezaDto(string Condicion, string Ojo, int Denominador);
-
-    public record HistoriaDetalleDto(
-        Guid Id,
-        DateTime Fecha,
-        string Paciente,
-        string Telefono,
-        string? Observaciones,
-        string Estado,
-        IEnumerable<AgudezaDto> AV,
-        IEnumerable<RxDto> RX,
-        IEnumerable<MaterialSeleccionadoDto> Materiales,
-        IEnumerable<LenteContactoDto> LentesContacto,
-        IEnumerable<PagoDto> Pagos,
-        decimal? Total,
-        decimal? ACuenta,
-        decimal? Resta,
-        DateTime? FechaEnvioLaboratorio,
-        DateTime? FechaEstimadaEntrega
-    );
 
     public record RxDto(string Ojo, string Distancia, decimal? Esf, decimal? Cyl, int? Eje, decimal? Add, string? Dip, decimal? AltOblea);
     public record MaterialSeleccionadoDto(Guid MaterialId, string Descripcion, string? Marca, string? Observaciones);
@@ -103,15 +52,12 @@ public class HistoriasController : ControllerBase
 
     public record PagoDto(Guid Id, string Metodo, decimal Monto, string? Autorizacion, string? Nota, DateTime Fecha);
 
-    public record EnviarLabRequestDto(
-        decimal Total,
-        List<PagoCrearDto>? Pagos,
-        DateTime? FechaEstimadaEntrega
-    );
-
-    public record PagosMultiplesDto(List<PagoCrearDto> Pagos);
+    public record EnviarLabRequestDto(decimal Total, List<PagoCrearDto>? Pagos, DateTime? FechaEstimadaEntrega);
 
     public record PagoCrearDto(decimal Monto, string Metodo, string? Autorizacion, string? Nota);
+
+    public sealed record ConceptoCrearDto(string Concepto, decimal Monto, string? Observaciones);
+    public sealed record GuardarConceptosRequest(List<ConceptoCrearDto> Conceptos);
 
     [HttpPost]
     public async Task<ActionResult<object>> Crear(CrearHistoriaRequest req)
@@ -233,13 +179,10 @@ public class HistoriasController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = visita.Id }, new { id = visita.Id });
     }
 
-    // Método auxiliar para clamp
     private static int Clamp(int value, int min, int max)
     {
         return value < min ? min : value > max ? max : value;
     }
-
-
 
     [HttpGet("{id}")]
     public async Task<ActionResult<VisitaCompletaDto>> GetById(Guid id)
@@ -254,6 +197,7 @@ public class HistoriasController : ControllerBase
             .Include(v => v.LentesContacto)
             .Include(v => v.Paciente)
             .Include(v => v.Sucursal) // ✅ INCLUIR SUCURSAL
+            .Include(v => v.Conceptos)
             .FirstOrDefaultAsync(v => v.Id == id);
 
         if (visita == null)
@@ -349,13 +293,23 @@ public class HistoriasController : ControllerBase
                 Marca = lc.Marca,
                 Modelo = lc.Modelo,
                 Observaciones = lc.Observaciones
+            }).ToList(),
+
+            //CONCEPTOS
+            Conceptos = visita.Conceptos.Select(c => new VisitaConceptoDto
+            {
+                Id = c.Id,
+                Concepto = c.Concepto,
+                Monto = c.Monto,
+                UsuarioNombre = c.UsuarioNombre,
+                Fecha = c.TimestampUtc,
+                Observaciones = c.Observaciones
             }).ToList()
         };
 
         return visitaDto;
     }
 
-    // Endpoint para obtener últimas visitas (simplificado)
     [HttpGet("paciente/{pacienteId}")]
     public async Task<ActionResult<List<UltimaHistoriaItem>>> GetByPaciente(Guid pacienteId)
     {
@@ -514,8 +468,6 @@ public class HistoriasController : ControllerBase
         return dto;
     }
 
-    public sealed record EnviarLabRequest(decimal total, PagoDto[]? pagos, DateTime? fechaEstimadaEntrega);
-
     [HttpGet("{id:guid}/pagos")]
     public async Task<IEnumerable<object>> ListarPagos(Guid id)
         => await _db.HistoriaPagos.Where(p => p.VisitaId == id)
@@ -575,10 +527,6 @@ public class HistoriasController : ControllerBase
             .Take(take)
             .ToListAsync();
 
-    
-
-    
-
     [HttpPost("{id:guid}/enviar-lab")]
     [Authorize]
     public async Task<ActionResult> EnviarALaboratorio(Guid id, [FromBody] EnviarLabRequestDto body)
@@ -626,8 +574,8 @@ public class HistoriasController : ControllerBase
     public async Task<ActionResult<PagedResult<VisitaCostoRowDto>>> GetVisitasCostos(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
-        [FromQuery] string? search = null,          // opcional: buscar por nombre de paciente
-        [FromQuery] int estado = -1           // opcional: filtrar por estado
+        [FromQuery] string? search = null,
+        [FromQuery] int estado = -1
     )
     {
         var sucursalIdClaim = User.FindFirst("sucursalId")?.Value;
@@ -636,16 +584,25 @@ public class HistoriasController : ControllerBase
 
         var sucursalId = Guid.Parse(sucursalIdClaim);
 
+        var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+
         var q = _db.Visitas
             .AsNoTracking()
             .Where(v => v.SucursalId == sucursalId);
 
-        //if (estado != -1)
-        //    q = q.Where(v => v.Estado. == estado); 
+        //userRole = "Admin"
+        if (userRole == "Admin")
+        {
+            q = _db.Visitas
+                .AsNoTracking();
+        }
+
+        // Filtro por estado (si lo habilitas)
+        // if (estado != -1)
+        //     q = q.Where(v => (int)v.Estado == estado);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            // Busca por nombre de paciente (asumiendo relación)
             q = q.Where(v => (v.Paciente.Nombre).Contains(search));
         }
 
@@ -663,12 +620,19 @@ public class HistoriasController : ControllerBase
                 (int)v.Estado,
                 v.Total,
                 v.ACuenta,
-                v.Resta
+                v.Resta,
+                // NUEVO: último TimestampUtc en VisitaStatusHistory para esta visita
+                _db.VisitaStatusHistory
+                    .Where(h => h.VisitaId == v.Id)
+                    .OrderByDescending(h => h.TimestampUtc)
+                    .Select(h => (DateTimeOffset?)h.TimestampUtc)
+                    .FirstOrDefault()
             ))
             .ToListAsync();
 
         return Ok(new PagedResult<VisitaCostoRowDto>(rows, page, pageSize, total));
     }
+
 
 
     [HttpPost("{id:guid}/status")]
@@ -755,7 +719,6 @@ public class HistoriasController : ControllerBase
         }
     }
 
-    // Método auxiliar para actualizar fechas
     private void UpdateFechasPorEstado(HistoriaClinicaVisita visita, EstadoHistoria nuevoEstado)
     {
         switch (nuevoEstado)
@@ -778,10 +741,9 @@ public class HistoriasController : ControllerBase
     [HttpGet("{id:guid}/status-history")]
     public async Task<ActionResult<IEnumerable<VisitaStatusHistory>>> GetHistory(Guid id)
     {
-            var sucursalId = Guid.Parse(User.FindFirst("sucursalId")!.Value);
+        var sucursalId = Guid.Parse(User.FindFirst("sucursalId")!.Value);
 
-            // valida pertenencia
-            var pertenece = await _db.Visitas.AnyAsync(v => v.Id == id && v.SucursalId == sucursalId);
+        var pertenece = await _db.Visitas.AnyAsync(v => v.Id == id && v.SucursalId == sucursalId);
             if (!pertenece) return NotFound();
 
             var hist = await _db.VisitaStatusHistory
@@ -792,7 +754,7 @@ public class HistoriasController : ControllerBase
             return Ok(hist);
         }
 
-        private static readonly Dictionary<string, string[]> Allowed = new()
+    private static readonly Dictionary<string, string[]> Allowed = new()
         {
             ["Creada"] = new[] { "Registrada", "Cancelada" },
             ["Registrada"] = new[] { "Enviada a laboratorio", "Cancelada" },
@@ -805,11 +767,100 @@ public class HistoriasController : ControllerBase
             ["Cancelada"] = Array.Empty<string>()
         };
 
-        private static bool IsAllowedTransition(string from, string? to)
+    [HttpPost("{id:guid}/conceptos")]
+    public async Task<IActionResult> GuardarConceptos(Guid id, [FromBody] GuardarConceptosRequest body)
+    {
+        if (body?.Conceptos is null || body.Conceptos.Count == 0)
+            return BadRequest("Debe enviar al menos un concepto.");
+
+        // Claims (sucursal y usuario)
+        var sucursalIdClaim = User.FindFirst("sucursalId")?.Value;
+        if (string.IsNullOrWhiteSpace(sucursalIdClaim))
+            return Forbid();
+
+        var sucursalId = Guid.Parse(sucursalIdClaim);
+
+        string? GetClaim(params string[] types)
+            => types.Select(t => User.FindFirst(t)?.Value).FirstOrDefault(v => !string.IsNullOrEmpty(v));
+
+        var userIdStr = GetClaim(JwtRegisteredClaimNames.Sub, ClaimTypes.NameIdentifier, "sub");
+        var userName = GetClaim("name", ClaimTypes.Name, JwtRegisteredClaimNames.UniqueName) ?? User.Identity?.Name;
+
+        if (string.IsNullOrWhiteSpace(userIdStr) || string.IsNullOrWhiteSpace(userName))
+            return BadRequest("No se pudo identificar al usuario.");
+
+        var userId = Guid.Parse(userIdStr);
+
+        // Traer la visita validando que pertenezca a la sucursal
+        var visita = await _db.Visitas
+            .Include(v => v.Conceptos)
+            .FirstOrDefaultAsync(v => v.Id == id && v.SucursalId == sucursalId);
+
+        if (visita is null)
+            return NotFound("Visita no encontrada en tu sucursal.");
+
+        // Validaciones simples
+        foreach (var c in body.Conceptos)
+        {
+            if (string.IsNullOrWhiteSpace(c.Concepto))
+                return BadRequest("Todos los conceptos deben tener nombre.");
+            if (c.Monto < 0)
+                return BadRequest($"El concepto '{c.Concepto}' no puede tener monto negativo.");
+        }
+
+        using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            // 1) Reemplazar conceptos existentes
+            if (visita.Conceptos.Any())
+            {
+                _db.VisitaConceptos.RemoveRange(visita.Conceptos);
+                await _db.SaveChangesAsync();
+            }
+
+            // 2) Insertar nuevos conceptos
+            var now = DateTimeOffset.UtcNow;
+            var nuevos = body.Conceptos.Select(c => new VisitaConcepto
+            {
+                Id = Guid.NewGuid(),
+                VisitaId = visita.Id,
+                Concepto = c.Concepto.Trim(),
+                Monto = c.Monto,
+                UsuarioId = userId,
+                UsuarioNombre = userName!,
+                SucursalId = sucursalId,
+                TimestampUtc = now,
+                Observaciones = string.IsNullOrWhiteSpace(c.Observaciones) ? null : c.Observaciones!.Trim()
+            }).ToList();
+
+            await _db.VisitaConceptos.AddRangeAsync(nuevos);
+
+            // 3) Recalcular totales de la Visita
+            var total = nuevos.Sum(x => x.Monto);
+            visita.Total = total;
+            visita.ACuenta = 0m;         // Antes de registrar pagos
+            visita.Resta = total;        // Resta = Total (sin pagos)
+
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            return Ok(new
+            {
+                visitaId = visita.Id,
+                total,
+                conceptos = nuevos.Select(n => new { n.Id, n.Concepto, n.Monto, n.TimestampUtc })
+            });
+        }
+        catch (Exception)
+        {
+            await tx.RollbackAsync();
+            return StatusCode(500, "Error al guardar conceptos.");
+        }
+    }
+
+    private static bool IsAllowedTransition(string from, string? to)
             => to is not null && Allowed.TryGetValue(from, out var next) && next.Contains(to);
-    
-
-
+        
     public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount);
 
 }

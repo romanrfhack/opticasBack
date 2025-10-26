@@ -14,7 +14,8 @@ namespace Optica.Domain.Dtos
         int Estado,           // Texto del enum
         decimal? Total,
         decimal? ACuenta,
-        decimal? Resta
+        decimal? Resta,
+        DateTimeOffset? FechaUltimaActualizacion // <-- NUEVO
     );
 
     public sealed record ChangeVisitaStatusRequest(

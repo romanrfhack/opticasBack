@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Optica.Domain.Entities;
 using Optica.Infrastructure.Identity;
 
+using System.Reflection.Emit;
+
 namespace Optica.Infrastructure.Persistence;
 
 public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
@@ -26,6 +28,8 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
     public DbSet<HistoriaClinicaVisita> Visitas => Set<HistoriaClinicaVisita>();
     public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
     public DbSet<VisitaStatusHistory> VisitaStatusHistory => Set<VisitaStatusHistory>();
+    public DbSet<VisitaConcepto> VisitaConceptos => Set<VisitaConcepto>();
+
 
     // CREATE INDEX IX_Visitas_SucursalId_Fecha ON dbo.Visitas(SucursalId, Fecha DESC);
     protected override void OnModelCreating(ModelBuilder b)
@@ -181,6 +185,23 @@ public sealed class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>
             // .HasForeignKey(h => h.VisitaId)
             // .OnDelete(DeleteBehavior.Cascade);
         });
+
+        b.Entity<VisitaConcepto>(e =>
+        {
+            e.ToTable("VisitaConceptos");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Monto).HasColumnType("decimal(18,2)");
+            e.Property(x => x.Concepto).HasMaxLength(128).IsRequired();
+            e.Property(x => x.UsuarioNombre).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Observaciones).HasMaxLength(1024);
+
+            e.HasIndex(x => x.VisitaId);
+            e.HasIndex(x => new { x.SucursalId, x.VisitaId });
+            e.HasOne(x => x.Visita)
+                .WithMany(v => v.Conceptos)  
+                .HasForeignKey(x => x.VisitaId);
+        });
+
 
         b.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }

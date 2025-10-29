@@ -630,6 +630,16 @@ public class HistoriasController : ControllerBase
                 v.ACuenta,
                 v.Resta,
                 v.Sucursal.Nombre,
+                _db.VisitaStatusHistory
+                    .Where(h => h.VisitaId == v.Id)
+                    .OrderByDescending(h => h.TimestampUtc)
+                    .Select(h => h.LabTipo)
+                    .FirstOrDefault(),
+                _db.VisitaStatusHistory
+                    .Where(h => h.VisitaId == v.Id)
+                    .OrderByDescending(h => h.TimestampUtc)
+                    .Select(h => h.LabNombre)
+                    .FirstOrDefault(),
                 // NUEVO: último TimestampUtc en VisitaStatusHistory para esta visita
                 _db.VisitaStatusHistory
                     .Where(h => h.VisitaId == v.Id)
@@ -655,8 +665,21 @@ public class HistoriasController : ControllerBase
 
         var usuarioId = GetClaim(JwtRegisteredClaimNames.Sub, ClaimTypes.NameIdentifier, "sub");
         var usuarioNom = GetClaim("name", ClaimTypes.Name, JwtRegisteredClaimNames.UniqueName) ?? User.Identity?.Name;
+        var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
         var visita = await _db.Visitas.FirstOrDefaultAsync(v => v.Id == id && v.SucursalId == sucursalId);
+
+        //userRole = "Admin"
+        if (userRole == "Admin")
+        {
+            visita = await _db.Visitas.FirstOrDefaultAsync(v => v.Id == id );
+        }
+
+        //userRole = "Mensajero"
+        if (userRole == "Mensajero")
+        {
+            visita = await _db.Visitas.FirstOrDefaultAsync(v => v.Id == id && v.Estado == EstadoHistoria.ListaParaEnvio);
+        }
         if (visita is null) return NotFound("Visita no encontrada en tu sucursal.");
 
         var fromStatus = visita.Estado;

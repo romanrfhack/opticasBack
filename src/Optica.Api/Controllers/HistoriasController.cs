@@ -771,20 +771,98 @@ public class HistoriasController : ControllerBase
     }
 
     [HttpGet("{id:guid}/status-history")]
-    public async Task<ActionResult<IEnumerable<VisitaStatusHistory>>> GetHistory(Guid id)
+    public async Task<ActionResult<VisitaStatusHistoryDto>> GetHistory(Guid id)
     {
         var sucursalId = Guid.Parse(User.FindFirst("sucursalId")!.Value);
 
-        var pertenece = await _db.Visitas.AnyAsync(v => v.Id == id && v.SucursalId == sucursalId);
-            if (!pertenece) return NotFound();
+        // Validar pertenencia
+        var visita = await _db.Visitas
+            .Include(v => v.Paciente)
+            .Include(v => v.Sucursal)
+            .FirstOrDefaultAsync(v => v.Id == id);
 
-            var hist = await _db.VisitaStatusHistory
-                .Where(h => h.VisitaId == id)
-                .OrderByDescending(h => h.TimestampUtc)
-                .ToListAsync();
+        if (visita == null)
+            return NotFound("Visita no encontrada.");
 
-            return Ok(hist);
+        // Si no es Admin, validar que pertenezca a la misma sucursal
+        var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+        if (role != "Admin" && visita.SucursalId != sucursalId)
+            return Forbid();
+
+        // Traer el historial completo, ordenado
+        var historial = await _db.VisitaStatusHistory
+            .Where(h => h.VisitaId == id)
+            .OrderBy(h => h.TimestampUtc)
+            .ToListAsync();
+
+        // Calcular el tiempo transcurrido entre estatus
+        var pasos = new List<StatusStepDto>();
+        for (int i = 0; i < historial.Count; i++)
+        {
+            var actual = historial[i];
+            DateTimeOffset? siguienteFecha = i < historial.Count - 1
+                ? historial[i + 1].TimestampUtc
+                : DateTimeOffset.UtcNow;
+
+            TimeSpan diff = siguienteFecha.Value - actual.TimestampUtc;
+            string tiempo = FormatearTiempo(diff);
+
+            pasos.Add(new StatusStepDto(
+                actual.FromStatus,
+                actual.ToStatus,
+                actual.UsuarioNombre,
+                actual.TimestampUtc,
+                actual.Observaciones,
+                actual.LabTipo,
+                actual.LabNombre,
+                tiempo
+            ));
         }
+
+        var dto = new VisitaStatusHistoryDto(
+            visita.Paciente.Nombre,
+            visita.Paciente.Telefono ?? "",
+            visita.Sucursal.Nombre,
+            visita.UsuarioNombre,
+            visita.Fecha,
+            pasos
+        );
+
+        return Ok(dto);
+    }
+
+    private static string FormatearTiempo(TimeSpan ts)
+    {
+        if (ts.TotalMinutes < 1)
+            return "menos de 1 min";
+        if (ts.TotalHours < 1)
+            return $"{(int)ts.TotalMinutes} min";
+        if (ts.TotalDays < 1)
+            return $"{(int)ts.TotalHours} h {ts.Minutes} min";
+        return $"{(int)ts.TotalDays} d {ts.Hours} h";
+    }
+
+    // DTOs locales
+    public sealed record VisitaStatusHistoryDto(
+        string PacienteNombre,
+        string PacienteTelefono,
+        string SucursalNombre,
+        string UsuarioAtendio,
+        DateTime FechaVisita,
+        List<StatusStepDto> Estatus
+    );
+
+    public sealed record StatusStepDto(
+        string FromStatus,
+        string ToStatus,
+        string UsuarioNombre,
+        DateTimeOffset TimestampUtc,
+        string? Observaciones,
+        string? LabTipo,
+        string? LabNombre,
+        string TiempoTranscurrido
+    );
+
 
     private static readonly Dictionary<string, string[]> Allowed = new()
         {

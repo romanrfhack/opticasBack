@@ -1,16 +1,17 @@
-﻿// Controllers/DashboardController.cs
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 using Optica.Domain.Entities;
+using Optica.Domain.Enums;
 using Optica.Infrastructure.Persistence;
 
 using System.ComponentModel;
 using System.Globalization;
-using Optica.Domain.Enums;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class DashboardController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -20,6 +21,7 @@ public class DashboardController : ControllerBase
         _context = context;
     }
 
+    // -------------------- 1️⃣ KPI PRINCIPALES --------------------
     [HttpGet("kpis")]
     public async Task<ActionResult<DashboardKpisResponse>> GetKpis(
         [FromQuery] string period = "week",
@@ -28,10 +30,9 @@ public class DashboardController : ControllerBase
         [FromQuery] string branchId = "all")
     {
         var (currentStart, currentEnd, previousStart, previousEnd) = GetDateRange(period, startDate, endDate);
-
         var kpis = new DashboardKpisResponse();
 
-        // Pacientes atendidos (visitas únicas)
+        // Pacientes atendidos
         var currentVisitas = await GetVisitasQuery(branchId, currentStart, currentEnd).CountAsync();
         var previousVisitas = await GetVisitasQuery(branchId, previousStart, previousEnd).CountAsync();
         kpis.PatientsAttended = new KpiData
@@ -49,7 +50,7 @@ public class DashboardController : ControllerBase
             Change = CalculatePercentageChange(currentNuevos, previousNuevos)
         };
 
-        // Órdenes cobradas (visitas con pagos)
+        // Órdenes cobradas
         var currentCobradas = await GetVisitasWithPagosQuery(branchId, currentStart, currentEnd).CountAsync();
         var previousCobradas = await GetVisitasWithPagosQuery(branchId, previousStart, previousEnd).CountAsync();
         kpis.OrdersPaid = new KpiData
@@ -59,8 +60,8 @@ public class DashboardController : ControllerBase
         };
 
         // Ingresos totales
-        var currentIngresos = await GetPagosQuery(branchId, currentStart, currentEnd).SumAsync(p => p.Monto);
-        var previousIngresos = await GetPagosQuery(branchId, previousStart, previousEnd).SumAsync(p => p.Monto);
+        var currentIngresos = await GetPagosQuery(branchId, currentStart, currentEnd).SumAsync(p => (decimal?)p.Monto) ?? 0;
+        var previousIngresos = await GetPagosQuery(branchId, previousStart, previousEnd).SumAsync(p => (decimal?)p.Monto) ?? 0;
         kpis.TotalIncome = new KpiData
         {
             Value = currentIngresos,
@@ -68,7 +69,7 @@ public class DashboardController : ControllerBase
         };
 
         // Enviadas a laboratorio
-        var currentLab = await GetVisitasByStatusQuery(branchId, 5, currentStart, currentEnd).CountAsync(); // Estado 5 = Enviada a laboratorio
+        var currentLab = await GetVisitasByStatusQuery(branchId, 5, currentStart, currentEnd).CountAsync();
         var previousLab = await GetVisitasByStatusQuery(branchId, 5, previousStart, previousEnd).CountAsync();
         kpis.SentToLab = new KpiData
         {
@@ -77,7 +78,7 @@ public class DashboardController : ControllerBase
         };
 
         // Entregadas a clientes
-        var currentEntregadas = await GetVisitasByStatusQuery(branchId, 8, currentStart, currentEnd).CountAsync(); // Estado 8 = Entregada
+        var currentEntregadas = await GetVisitasByStatusQuery(branchId, 8, currentStart, currentEnd).CountAsync();
         var previousEntregadas = await GetVisitasByStatusQuery(branchId, 8, previousStart, previousEnd).CountAsync();
         kpis.DeliveredToCustomers = new KpiData
         {
@@ -85,9 +86,10 @@ public class DashboardController : ControllerBase
             Change = CalculatePercentageChange(currentEntregadas, previousEntregadas)
         };
 
-        return kpis;
+        return Ok(kpis);
     }
 
+    // -------------------- 2️⃣ PACIENTES ATENDIDOS --------------------
     [HttpGet("patient-attendance")]
     public async Task<ActionResult<PatientAttendanceResponse>> GetPatientAttendance(
         [FromQuery] string period = "week",
@@ -97,17 +99,38 @@ public class DashboardController : ControllerBase
     {
         var (currentStart, currentEnd, _, _) = GetDateRange(period, startDate, endDate);
 
-        var visitas = await GetVisitasQuery(branchId, currentStart, currentEnd)
+        // Obtener visitas dentro del rango
+        var query = _context.Visitas
+            .AsNoTracking()
+            .Where(v => v.Fecha >= currentStart && v.Fecha <= currentEnd);
+
+        if (branchId != "all" && Guid.TryParse(branchId, out var branchGuid))
+            query = query.Where(v => v.SucursalId == branchGuid);
+
+        var visitas = await query
+            .Select(v => new { v.Fecha, v.PacienteId })
+            .ToListAsync();
+
+        // Cálculo de nuevos pacientes con precarga
+        var primeros = await _context.Visitas
+            .AsNoTracking()
+            .GroupBy(v => v.PacienteId)
+            .Select(g => new { PacienteId = g.Key, Primera = g.Min(v => v.Fecha) })
+            .ToListAsync();
+
+        var agrupado = visitas
             .GroupBy(v => v.Fecha.Date)
             .Select(g => new
             {
                 Date = g.Key,
                 Total = g.Count(),
-                NewPatients = g.Select(v => v.PacienteId).Distinct().Count(p =>
-                    !_context.Visitas.Any(v2 => v2.PacienteId == p && v2.Fecha < g.Key))
+                NewPatients = g
+                    .Select(v => v.PacienteId)
+                    .Distinct()
+                    .Count(pid => primeros.Any(p => p.PacienteId == pid && p.Primera.Date == g.Key))
             })
             .OrderBy(x => x.Date)
-            .ToListAsync();
+            .ToList();
 
         var labels = GenerateDateLabels(currentStart, currentEnd, period);
         var totalData = new List<int>();
@@ -115,19 +138,20 @@ public class DashboardController : ControllerBase
 
         foreach (var label in labels)
         {
-            var visita = visitas.FirstOrDefault(v => v.Date == label);
-            totalData.Add(visita?.Total ?? 0);
-            newPatientsData.Add(visita?.NewPatients ?? 0);
+            var item = agrupado.FirstOrDefault(v => v.Date == label);
+            totalData.Add(item?.Total ?? 0);
+            newPatientsData.Add(item?.NewPatients ?? 0);
         }
 
-        return new PatientAttendanceResponse
+        return Ok(new PatientAttendanceResponse
         {
             Labels = labels.Select(d => d.ToString("MMM dd")).ToArray(),
             TotalPatients = totalData.ToArray(),
             NewPatients = newPatientsData.ToArray()
-        };
+        });
     }
 
+    // -------------------- 3️⃣ MÉTODOS DE PAGO --------------------
     [HttpGet("payment-methods")]
     public async Task<ActionResult<PaymentMethodsResponse>> GetPaymentMethods(
         [FromQuery] string period = "week",
@@ -139,15 +163,10 @@ public class DashboardController : ControllerBase
 
         var pagos = await GetPagosQuery(branchId, currentStart, currentEnd)
             .GroupBy(p => p.Metodo)
-            .Select(g => new
-            {
-                Method = g.Key,
-                Total = g.Sum(p => p.Monto),
-                Count = g.Count()
-            })
+            .Select(g => new { Metodo = g.Key, Total = g.Sum(p => p.Monto) })
             .ToListAsync();
 
-        var totalAmount = pagos.Sum(p => p.Total);
+        var total = pagos.Sum(p => p.Total);
         var methods = new Dictionary<int, string>
         {
             { 0, "Efectivo" },
@@ -155,18 +174,20 @@ public class DashboardController : ControllerBase
             { 2, "Transferencia" }
         };
 
-        return new PaymentMethodsResponse
+        // Evitar división por cero
+        return Ok(new PaymentMethodsResponse
         {
             Labels = methods.Values.ToArray(),
-            Data = methods.Keys.Select(method =>
-                (int)((pagos.FirstOrDefault(p => p.Method == (MetodoPago)method)?.Total ?? 0) / totalAmount * 100)
+            Data = methods.Keys.Select(m =>
+                total > 0 ? (int)((pagos.FirstOrDefault(p => (int)p.Metodo == m)?.Total ?? 0) / total * 100) : 0
             ).ToArray(),
-            Amounts = methods.Keys.Select(method =>
-                pagos.FirstOrDefault(p => p.Method == (MetodoPago)method)?.Total ?? 0
+            Amounts = methods.Keys.Select(m =>
+                pagos.FirstOrDefault(p => (int)p.Metodo == m)?.Total ?? 0
             ).ToArray()
-        };
+        });
     }
 
+    // -------------------- 4️⃣ ESTADOS DE ÓRDENES --------------------
     [HttpGet("order-status")]
     public async Task<ActionResult<OrderStatusResponse>> GetOrderStatus(
         [FromQuery] string branchId = "all")
@@ -185,18 +206,17 @@ public class DashboardController : ControllerBase
 
         var counts = await GetVisitasQuery(branchId, null, null)
             .GroupBy(v => v.Estado)
-            .Select(g => new { Estado = g.Key, Count = g.Count() })
+            .Select(g => new { Estado = (int)g.Key, Count = g.Count() })
             .ToListAsync();
 
-        return new OrderStatusResponse
+        return Ok(new OrderStatusResponse
         {
             Labels = estados.Values.ToArray(),
-            Data = estados.Keys.Select(estado =>
-                counts.FirstOrDefault(c => (int)c.Estado == estado)?.Count ?? 0
-            ).ToArray()
-        };
+            Data = estados.Keys.Select(e => counts.FirstOrDefault(c => c.Estado == e)?.Count ?? 0).ToArray()
+        });
     }
 
+    // -------------------- 5️⃣ VENTAS POR CATEGORÍA --------------------
     [HttpGet("sales-by-category")]
     public async Task<ActionResult<SalesByCategoryResponse>> GetSalesByCategory(
         [FromQuery] string period = "month",
@@ -206,204 +226,161 @@ public class DashboardController : ControllerBase
     {
         var (currentStart, currentEnd, _, _) = GetDateRange(period, startDate, endDate);
 
-        var ventas = await _context.Visitas
-            .Where(v => v.Fecha >= currentStart && v.Fecha <= currentEnd)
-            .Where(v => branchId == "all" || v.SucursalId.ToString() == branchId)
+        var query = _context.Visitas
+            .AsNoTracking()
+            .Include(v => v.Conceptos)
+            .Where(v => v.Fecha >= currentStart && v.Fecha <= currentEnd);
+
+        if (branchId != "all" && Guid.TryParse(branchId, out var branchGuid))
+            query = query.Where(v => v.SucursalId == branchGuid);
+
+        var ventas = await query
             .SelectMany(v => v.Conceptos)
             .GroupBy(c => c.Concepto)
-            .Select(g => new
-            {
-                Category = g.Key,
-                Total = g.Sum(c => c.Monto)
-            })
+            .Select(g => new { Category = g.Key, Total = g.Sum(c => c.Monto) })
             .ToListAsync();
 
         var total = ventas.Sum(v => v.Total);
-
-        return new SalesByCategoryResponse
+        return Ok(new SalesByCategoryResponse
         {
             Labels = ventas.Select(v => v.Category).ToArray(),
-            Data = ventas.Select(v => (int)(v.Total / total * 100)).ToArray(),
+            Data = ventas.Select(v => total > 0 ? (int)(v.Total / total * 100) : 0).ToArray(),
             Amounts = ventas.Select(v => v.Total).ToArray()
-        };
+        });
     }
 
+    // -------------------- 6️⃣ INGRESOS MENSUALES --------------------
     [HttpGet("monthly-revenue")]
     public async Task<ActionResult<MonthlyRevenueResponse>> GetMonthlyRevenue(
         [FromQuery] string branchId = "all")
     {
-        var currentYear = DateTime.Today.Year;
-        var previousYear = currentYear - 1;
+        var year = DateTime.Today.Year;
+        var prevYear = year - 1;
 
-        var revenueCurrent = await GetPagosQuery(branchId, new DateTime(currentYear, 1, 1), new DateTime(currentYear, 12, 31))
+        var current = await GetPagosQuery(branchId, new DateTime(year, 1, 1), new DateTime(year, 12, 31))
             .GroupBy(p => p.Fecha.Month)
-            .Select(g => new { Month = g.Key, Total = g.Sum(p => p.Monto) })
+            .Select(g => new { g.Key, Total = g.Sum(p => p.Monto) })
             .ToListAsync();
 
-        var revenuePrevious = await GetPagosQuery(branchId, new DateTime(previousYear, 1, 1), new DateTime(previousYear, 12, 31))
+        var previous = await GetPagosQuery(branchId, new DateTime(prevYear, 1, 1), new DateTime(prevYear, 12, 31))
             .GroupBy(p => p.Fecha.Month)
-            .Select(g => new { Month = g.Key, Total = g.Sum(p => p.Monto) })
+            .Select(g => new { g.Key, Total = g.Sum(p => p.Monto) })
             .ToListAsync();
 
         var months = new[] { "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic" };
-        var currentYearData = new decimal[12];
-        var previousYearData = new decimal[12];
+        var currentData = new decimal[12];
+        var previousData = new decimal[12];
 
         for (int i = 0; i < 12; i++)
         {
-            currentYearData[i] = revenueCurrent.FirstOrDefault(r => r.Month == i + 1)?.Total ?? 0;
-            previousYearData[i] = revenuePrevious.FirstOrDefault(r => r.Month == i + 1)?.Total ?? 0;
+            currentData[i] = current.FirstOrDefault(r => r.Key == i + 1)?.Total ?? 0;
+            previousData[i] = previous.FirstOrDefault(r => r.Key == i + 1)?.Total ?? 0;
         }
 
-        return new MonthlyRevenueResponse
+        return Ok(new MonthlyRevenueResponse
         {
             Labels = months,
-            CurrentYear = currentYearData,
-            PreviousYear = previousYearData
-        };
+            CurrentYear = currentData,
+            PreviousYear = previousData
+        });
     }
 
-    // Métodos auxiliares
-    private IQueryable<HistoriaClinicaVisita> GetVisitasQuery(string branchId, DateTime? startDate, DateTime? endDate)
+    // -------------------- AUXILIARES --------------------
+    private IQueryable<HistoriaClinicaVisita> GetVisitasQuery(string branchId, DateTime? start, DateTime? end)
     {
-        var query = _context.Visitas.AsQueryable();
-
-        if (branchId != "all")
-            query = query.Where(v => v.SucursalId.ToString() == branchId);
-
-        if (startDate.HasValue)
-            query = query.Where(v => v.Fecha >= startDate.Value);
-
-        if (endDate.HasValue)
-            query = query.Where(v => v.Fecha <= endDate.Value);
-
-        return query;
+        var q = _context.Visitas.AsNoTracking().AsQueryable();
+        if (branchId != "all" && Guid.TryParse(branchId, out var id)) q = q.Where(v => v.SucursalId == id);
+        if (start.HasValue) q = q.Where(v => v.Fecha >= start.Value);
+        if (end.HasValue) q = q.Where(v => v.Fecha <= end.Value);
+        return q;
     }
 
-    private IQueryable<Paciente> GetPacientesQuery(string branchId, DateTime? startDate, DateTime? endDate)
+    private IQueryable<Paciente> GetPacientesQuery(string branchId, DateTime? start, DateTime? end)
     {
-        var query = _context.Pacientes.AsQueryable();
-
-        if (branchId != "all")
-            query = query.Where(p => p.SucursalIdAlta.ToString() == branchId);
-
-        if (startDate.HasValue)
-            query = query.Where(p => p.FechaRegistro >= startDate.Value);
-
-        if (endDate.HasValue)
-            query = query.Where(p => p.FechaRegistro <= endDate.Value);
-
-        return query;
+        var q = _context.Pacientes.AsNoTracking().AsQueryable();
+        if (branchId != "all" && Guid.TryParse(branchId, out var id)) q = q.Where(p => p.SucursalIdAlta == id);
+        if (start.HasValue) q = q.Where(p => p.FechaRegistro >= start.Value);
+        if (end.HasValue) q = q.Where(p => p.FechaRegistro <= end.Value);
+        return q;
     }
 
-    private IQueryable<HistoriaPago> GetPagosQuery(string branchId, DateTime? startDate, DateTime? endDate)
+    private IQueryable<HistoriaPago> GetPagosQuery(string branchId, DateTime? start, DateTime? end)
     {
-        var query = _context.HistoriaPagos
-            .Include(hp => hp.Visita)
-            .AsQueryable();
+        IQueryable<HistoriaPago> q = _context.HistoriaPagos.AsNoTracking();
 
-        if (branchId != "all")
-            query = query.Where(hp => hp.Visita.SucursalId.ToString() == branchId);
+        q = q.Include(hp => hp.Visita);
 
-        if (startDate.HasValue)
-            query = query.Where(hp => hp.Fecha >= startDate.Value);
+        if (branchId != "all" && Guid.TryParse(branchId, out var id))
+            q = q.Where(hp => hp.Visita.SucursalId == id);
 
-        if (endDate.HasValue)
-            query = query.Where(hp => hp.Fecha <= endDate.Value);
+        if (start.HasValue)
+            q = q.Where(hp => hp.Fecha >= start.Value);
 
-        return query;
+        if (end.HasValue)
+            q = q.Where(hp => hp.Fecha <= end.Value);
+
+        return q;
     }
 
-    private IQueryable<HistoriaClinicaVisita> GetVisitasWithPagosQuery(string branchId, DateTime? startDate, DateTime? endDate)
+
+    private IQueryable<HistoriaClinicaVisita> GetVisitasWithPagosQuery(string branchId, DateTime? start, DateTime? end)
+        => GetVisitasQuery(branchId, start, end).Where(v => v.Pagos.Any());
+
+    private IQueryable<HistoriaClinicaVisita> GetVisitasByStatusQuery(string branchId, int status, DateTime? start, DateTime? end)
+        => GetVisitasQuery(branchId, start, end).Where(v => (int)v.Estado == status);
+
+    private (DateTime, DateTime, DateTime, DateTime) GetDateRange(string period, DateTime? customStart, DateTime? customEnd)
     {
-        return GetVisitasQuery(branchId, startDate, endDate)
-            .Where(v => v.Pagos.Any());
-    }
-
-    private IQueryable<HistoriaClinicaVisita> GetVisitasByStatusQuery(string branchId, int status, DateTime? startDate, DateTime? endDate)
-    {
-
-        return GetVisitasQuery(branchId, startDate, endDate)
-            .Where(v => (int)v.Estado == status);
-    }
-
-    private (DateTime currentStart, DateTime currentEnd, DateTime previousStart, DateTime previousEnd)
-        GetDateRange(string period, DateTime? customStart, DateTime? customEnd)
-    {
-        DateTime currentStart, currentEnd, previousStart, previousEnd;
-
-        var today = DateTime.Today;
+        DateTime today = DateTime.Today;
+        DateTime cs, ce, ps, pe;
 
         switch (period)
         {
             case "day":
-                currentStart = today;
-                currentEnd = today.AddDays(1).AddSeconds(-1);
-                previousStart = today.AddDays(-1);
-                previousEnd = today.AddSeconds(-1);
-                break;
-
+                cs = today; ce = today.AddDays(1).AddSeconds(-1);
+                ps = cs.AddDays(-1); pe = cs.AddSeconds(-1); break;
             case "week":
-                var startOfWeek = today.AddDays(-(int)today.DayOfWeek + (int)DayOfWeek.Monday);
-                currentStart = startOfWeek;
-                currentEnd = startOfWeek.AddDays(7).AddSeconds(-1);
-                previousStart = startOfWeek.AddDays(-7);
-                previousEnd = startOfWeek.AddSeconds(-1);
-                break;
-
+                var sow = today.AddDays(-(int)today.DayOfWeek + (int)DayOfWeek.Monday);
+                cs = sow; ce = sow.AddDays(7).AddSeconds(-1);
+                ps = sow.AddDays(-7); pe = sow.AddSeconds(-1); break;
             case "month":
-                currentStart = new DateTime(today.Year, today.Month, 1);
-                currentEnd = currentStart.AddMonths(1).AddSeconds(-1);
-                previousStart = currentStart.AddMonths(-1);
-                previousEnd = currentStart.AddSeconds(-1);
-                break;
-
+                cs = new DateTime(today.Year, today.Month, 1);
+                ce = cs.AddMonths(1).AddSeconds(-1);
+                ps = cs.AddMonths(-1); pe = cs.AddSeconds(-1); break;
             case "year":
-                currentStart = new DateTime(today.Year, 1, 1);
-                currentEnd = currentStart.AddYears(1).AddSeconds(-1);
-                previousStart = currentStart.AddYears(-1);
-                previousEnd = currentStart.AddSeconds(-1);
-                break;
-
+                cs = new DateTime(today.Year, 1, 1);
+                ce = cs.AddYears(1).AddSeconds(-1);
+                ps = cs.AddYears(-1); pe = cs.AddSeconds(-1); break;
             case "custom":
-                currentStart = customStart ?? today;
-                currentEnd = customEnd ?? today.AddDays(1).AddSeconds(-1);
-                var daysDiff = (currentEnd - currentStart).Days;
-                previousStart = currentStart.AddDays(-daysDiff - 1);
-                previousEnd = currentStart.AddSeconds(-1);
-                break;
-
+                cs = customStart ?? today;
+                ce = customEnd ?? today.AddDays(1).AddSeconds(-1);
+                int diff = (ce - cs).Days;
+                ps = cs.AddDays(-diff - 1);
+                pe = cs.AddSeconds(-1); break;
             default:
                 throw new ArgumentException("Período no válido");
         }
-
-        return (currentStart, currentEnd, previousStart, previousEnd);
+        return (cs, ce, ps, pe);
     }
 
     private decimal CalculatePercentageChange(decimal current, decimal previous)
-    {
-        if (previous == 0) return current > 0 ? 100 : 0;
-        return ((current - previous) / previous) * 100;
-    }
+        => previous == 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
 
     private List<DateTime> GenerateDateLabels(DateTime start, DateTime end, string period)
     {
         var labels = new List<DateTime>();
         var current = start;
-
         while (current <= end)
         {
             labels.Add(current);
             current = period switch
             {
                 "day" => current.AddHours(6),
-                "week" => current.AddDays(1),
-                "month" => current.AddDays(1),
+                "week" or "month" => current.AddDays(1),
                 "year" => current.AddMonths(1),
                 _ => current.AddDays(1)
             };
         }
-
         return labels;
     }
 }

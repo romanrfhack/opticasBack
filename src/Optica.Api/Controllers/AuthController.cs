@@ -8,6 +8,7 @@ using Optica.Infrastructure.Identity;
 using Optica.Infrastructure.Persistence;
 using System.Security.Claims;
 using Optica.Domain.Dtos;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace Optica.Api.Controllers;
 
@@ -103,20 +104,58 @@ public class AuthController : ControllerBase
 
     [HttpPost("change-password")]
     [Authorize]
-    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req,
-        [FromServices] UserManager<AppUser> _userManager)
+    public async Task<IActionResult> ChangePassword(
+        [FromBody] ChangePasswordRequest req,
+        [FromServices] UserManager<AppUser> userManager)
     {
-        //var userId = User?.FindFirst("sub")?.Value;
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return Unauthorized();
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user is null) return Unauthorized();
+        // Validar el modelo de entrada
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
 
-        var res = await _userManager.ChangePasswordAsync(user, req.CurrentPassword, req.NewPassword);
-        if (!res.Succeeded)
-            return BadRequest(new { message = string.Join("; ", res.Errors.Select(e => e.Description)) });
+        try
+        {
+            // Obtener el ID del usuario desde los claims
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                       ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
-        return NoContent();
+            if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out Guid userGuid))
+                return Unauthorized("No se pudo identificar al usuario.");
+
+            // Buscar el usuario
+            var user = await userManager.FindByIdAsync(userGuid.ToString());
+            if (user == null)
+                return Unauthorized("Usuario no encontrado.");
+
+            // Validar que la contraseña actual sea correcta
+            var isCurrentPasswordValid = await userManager.CheckPasswordAsync(user, req.CurrentPassword);
+            if (!isCurrentPasswordValid)
+                return BadRequest(new { message = "La contraseña actual es incorrecta." });
+
+            // Cambiar la contraseña
+            var result = await userManager.ChangePasswordAsync(user, req.CurrentPassword, req.NewPassword);
+
+            if (!result.Succeeded)
+            {
+                var errors = result.Errors.Select(e => e.Description);
+                return BadRequest(new
+                {
+                    message = "Error al cambiar la contraseña.",
+                    errors = errors
+                });
+            }
+
+            return Ok(new { message = "Contraseña cambiada exitosamente." });
+        }
+        catch (Exception ex)
+        {
+            // Log the exception (deberías tener un servicio de logging aquí)
+            // _logger.LogError(ex, "Error cambiando contraseña para el usuario {UserId}", userId);
+
+            return StatusCode(500, new
+            {
+                message = "Error interno del servidor al cambiar la contraseña."
+            });
+        }
     }
 
     [HttpPost("switch-branch")]

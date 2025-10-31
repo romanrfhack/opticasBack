@@ -145,7 +145,14 @@ public class DashboardController : ControllerBase
 
         return Ok(new PatientAttendanceResponse
         {
-            Labels = labels.Select(d => d.ToString("MMM dd")).ToArray(),
+            Labels = labels.Select(d => period switch
+            {
+                "day" => d.ToString("HH:mm"),  // horas si el periodo es diario
+                "week" => d.ToString("dd MMM"), // días del mes si es semanal
+                "month" => $"Sem {System.Globalization.CultureInfo.CurrentCulture.Calendar.GetWeekOfYear(d, CalendarWeekRule.FirstDay, DayOfWeek.Monday)}", // semanas
+                "year" => d.ToString("MMM"),   // meses si es anual
+                _ => d.ToString("MMM dd")
+            }).ToArray(),
             TotalPatients = totalData.ToArray(),
             NewPatients = newPatientsData.ToArray()
         });
@@ -370,19 +377,23 @@ public class DashboardController : ControllerBase
     {
         var labels = new List<DateTime>();
         var current = start;
+
         while (current <= end)
         {
             labels.Add(current);
             current = period switch
             {
-                "day" => current.AddHours(6),
-                "week" or "month" => current.AddDays(1),
-                "year" => current.AddMonths(1),
+                "day" => current.AddHours(6),       // Cada 6 horas
+                "week" => current.AddDays(1),       // Cada día
+                "month" => current.AddDays(7),      // Cada semana
+                "year" => current.AddMonths(1),     // Cada mes
                 _ => current.AddDays(1)
             };
         }
+
         return labels;
     }
+
 }
 
 // Modelos de respuesta

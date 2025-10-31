@@ -10,7 +10,7 @@ namespace Optica.Domain.Dtos
     public sealed record LoginRequest(string Email, string Password);
     public sealed record TokenResponse(string AccessToken, string RefreshToken, long ExpiresInSeconds, object User);
     public sealed record RefreshRequest(string RefreshToken);
-    public sealed record UpdateProfileRequest(string FullName, string? PhoneNumber);
+    public sealed record UpdateProfileRequest(string FullName, string email, string? PhoneNumber);
     public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     public sealed record SwitchBranchRequest(Guid TargetSucursalId);
     public sealed class ForgotPasswordRequest

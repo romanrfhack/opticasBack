@@ -1,14 +1,18 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
 using Optica.Api.Auth;
+using Optica.Domain.Dtos;
 using Optica.Domain.Entities;
 using Optica.Infrastructure.Identity;
 using Optica.Infrastructure.Persistence;
-using System.Security.Claims;
-using Optica.Domain.Dtos;
+
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Security.Claims;
 
 namespace Optica.Api.Controllers;
 
@@ -81,25 +85,148 @@ public class AuthController : ControllerBase
 
     [HttpPut("me")]
     [Authorize]
-    public async Task<IActionResult> UpdateMe([FromBody] UpdateProfileRequest req,
-        [FromServices] UserManager<AppUser> _userManager)
+    public async Task<IActionResult> UpdateMe(
+    [FromBody] UpdateProfileRequest req,
+    [FromServices] UserManager<AppUser> userManager,
+    [FromServices] IEmailSender emailSender) // Inyectar servicio de email
     {
-        //var userId = User?.FindFirst("sub")?.Value;
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null) return Unauthorized();
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user is null) return Unauthorized();
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
 
-        user.FullName = req.FullName;
-        if (!string.IsNullOrWhiteSpace(req.PhoneNumber))
-            user.PhoneNumber = req.PhoneNumber;
+        try
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                       ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
-        var res = await _userManager.UpdateAsync(user);
-        if (!res.Succeeded)
-            return BadRequest(new { message = string.Join("; ", res.Errors.Select(e => e.Description)) });
+            if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out Guid userGuid))
+                return Unauthorized("No se pudo identificar al usuario.");
 
-        var roles = await _userManager.GetRolesAsync(user);
-        return Ok(new { id = user.Id, name = user.FullName ?? user.UserName, email = user.Email, sucursalId = user.SucursalId, roles });
+            var user = await userManager.FindByIdAsync(userGuid.ToString());
+            if (user == null)
+                return Unauthorized("Usuario no encontrado.");
+
+            bool hasChanges = false;
+            bool emailChanged = false;
+            string? oldEmail = null;
+
+            // Verificar si el nombre cambió
+            if (user.FullName != req.FullName)
+            {
+                user.FullName = req.FullName;
+                hasChanges = true;
+            }
+
+            // Verificar si el email cambió
+            if (!string.IsNullOrEmpty(req.email) && user.Email != req.email)
+            {
+                var existingUser = await userManager.FindByEmailAsync(req.email);
+                if (existingUser != null && existingUser.Id != user.Id)
+                {
+                    return BadRequest(new
+                    {
+                        message = "El email ya está en uso por otro usuario."
+                    });
+                }
+
+                oldEmail = user.Email; // Guardar el email antiguo
+                user.Email = req.email;
+                user.EmailConfirmed = false; // Marcar como no confirmado
+                user.UserName = req.email; // Actualizar también el username si es necesario
+                hasChanges = true;
+                emailChanged = true;
+            }
+
+            // Verificar si el teléfono cambió
+            if (req.PhoneNumber != user.PhoneNumber)
+            {
+                user.PhoneNumber = req.PhoneNumber;
+                hasChanges = true;
+            }
+
+            EmailChangeResult emailChangeResult = new();
+
+            // Solo actualizar si hay cambios reales
+            if (hasChanges)
+            {
+                var result = await userManager.UpdateAsync(user);
+
+                if (!result.Succeeded)
+                {
+                    var errors = result.Errors.Select(e => e.Description);
+                    return BadRequest(new
+                    {
+                        message = "Error al actualizar el perfil.",
+                        errors = errors
+                    });
+                }
+
+                // Si el email cambió, enviar email de verificación
+                if (emailChanged && !string.IsNullOrEmpty(oldEmail))
+                {
+                    emailChangeResult = await SendEmailVerification(user, emailSender);
+                }
+            }
+
+            var roles = await userManager.GetRolesAsync(user);
+
+            return Ok(new
+            {
+                id = user.Id,
+                name = user.FullName ?? user.UserName,
+                email = user.Email,
+                sucursalId = user.SucursalId,
+                roles,
+                requiresEmailConfirmation = emailChanged,
+                emailVerificationSent = emailChangeResult.Success,
+                emailVerificationMessage = emailChangeResult.Message
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Error interno del servidor al actualizar el perfil."
+            });
+        }
+    }
+
+    private async Task<EmailChangeResult> SendEmailVerification(AppUser user, IEmailSender emailSender)
+    {
+        try
+        {
+            // Generar token de confirmación
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+
+            // Crear enlace de confirmación (ajusta la URL según tu frontend)
+            var confirmationLink = $"https://tudominio.com/confirm-email?userId={user.Id}&token={WebUtility.UrlEncode(token)}";
+
+            // Crear el contenido del email
+            var subject = "Confirma tu nuevo email";
+            var message = $@"
+            <h2>Confirma tu nuevo email</h2>
+            <p>Hola {user.FullName},</p>
+            <p>Has solicitado cambiar tu email a {user.Email}. Para completar este proceso, por favor confirma tu nuevo email haciendo clic en el siguiente enlace:</p>
+            <p><a href='{confirmationLink}' style='background-color: #06b6d4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Confirmar Email</a></p>
+            <p>Si no solicitaste este cambio, por favor ignora este mensaje.</p>
+            <br>
+            <p>Saludos,<br>El equipo de tu aplicación</p>
+        ";
+
+            // Enviar email
+            await emailSender.SendEmailAsync(user.Email, subject, message);
+
+            return new EmailChangeResult { Success = true, Message = "Email de verificación enviado" };
+        }
+        catch (Exception ex)
+        {
+            return new EmailChangeResult { Success = false, Message = "Error al enviar email de verificación" };
+        }
+    }
+
+    public class EmailChangeResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
     }
 
     [HttpPost("change-password")]

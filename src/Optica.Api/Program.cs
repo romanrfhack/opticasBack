@@ -57,7 +57,7 @@ builder.Services.AddCors(opts =>
     opts.AddPolicy(CorsProd, b => b
         .WithOrigins(
             "https://opticasolivar.site",
-            "https://opticsoft.netlify.app/",
+            "https://opticsoft.netlify.app",
             "http://localhost:4200"
         )
         .AllowAnyHeader()

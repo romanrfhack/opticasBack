@@ -56,7 +56,9 @@ builder.Services.AddCors(opts =>
     // Producción: Angular en Azure Static Web Apps
     opts.AddPolicy(CorsProd, b => b
         .WithOrigins(
-            "https://opticasolivar.site"
+            "https://opticasolivar.site",
+            "https://opticsoft.netlify.app/",
+            "http://localhost:4200"
         )
         .AllowAnyHeader()
         .AllowAnyMethod()
